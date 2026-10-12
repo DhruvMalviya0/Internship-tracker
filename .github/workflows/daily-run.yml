@@ -24,6 +24,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           APP_MODE: cloud
+          # Optional: lets the run email accounts it pauses for inactivity (INACTIVE_DAYS, default 14).
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+          INACTIVE_DAYS: ${{ vars.INACTIVE_DAYS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         # Exit code 1 means some sources failed but the run finished; that's not a workflow failure.
         run: python run.py --trigger ${{ github.event_name == 'workflow_dispatch' && 'web' || 'schedule' }} || [ $? -eq 1 ]
       - name: Keep the run log for a week

@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS users (
     picture TEXT,
     is_admin INTEGER DEFAULT 0,
     created_at TEXT,
-    last_login TEXT
+    last_login TEXT,
+    last_active TEXT,
+    paused_at TEXT,
+    pause_notified_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS profiles (
@@ -261,11 +264,30 @@ def connect(target: Path | str | None = None) -> Conn:
         _migrate_sqlite_v1(conn)
     schema = SCHEMA.replace(" INTEGER", " BIGINT") if conn.is_pg else SCHEMA  # Postgres: match BIGINT ids
     conn.executescript(schema.replace("{PK}", store.PK[conn.dialect]))
+    _ensure_columns(conn)
     if conn.execute("SELECT value FROM app_settings WHERE key='schema_version'").fetchone() is None:
         conn.execute("INSERT INTO app_settings(key, value, updated_at) VALUES ('schema_version', ?, ?)",
                      (SCHEMA_VERSION, now_iso()))
         conn.commit()
     return conn
+
+
+# Columns added after a table first shipped: (table, column, type). CREATE TABLE IF NOT EXISTS won't add them
+# to an existing database (your live Neon one included), so they're added here when missing.
+ADDED_COLUMNS = [
+    ("users", "last_active", "TEXT"),
+    ("users", "paused_at", "TEXT"),
+    ("users", "pause_notified_at", "TEXT"),
+]
+
+
+def _ensure_columns(conn: Conn) -> None:
+    for table, column, kind in ADDED_COLUMNS:
+        if conn.is_pg:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {kind}")
+        elif column not in _sqlite_columns(conn, table):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+    conn.commit()
 
 
 def _sqlite_columns(conn: Conn, table: str) -> list[str]:
@@ -344,6 +366,36 @@ def get_or_create_user(conn: Conn, email: str, name: str = "", picture: str = ""
         (email, name, picture, 1 if is_admin else 0, now, now)).fetchone()["id"]
     conn.commit()
     return get_user(conn, new_id), True
+
+
+def touch_user(conn: Conn, user: dict, every_minutes: int = 60) -> None:
+    """Records that the user is using the site (at most once an hour, to keep writes cheap)."""
+    last = user.get("last_active") or ""
+    if last and last > (datetime.now() - timedelta(minutes=every_minutes)).isoformat(timespec="seconds"):
+        return
+    conn.execute("UPDATE users SET last_active=? WHERE id=?", (now_iso(), user["id"]))
+    conn.commit()
+
+
+def last_activity(user: dict) -> str:
+    return max(x for x in (user.get("last_active"), user.get("last_login"), user.get("created_at"), "") if x is not None)
+
+
+def pause_user(conn: Conn, user_id: int, notified: bool) -> None:
+    now = now_iso()
+    conn.execute("UPDATE users SET paused_at=?, pause_notified_at=? WHERE id=?", (now, now if notified else None, user_id))
+    conn.commit()
+
+
+def resume_user(conn: Conn, user_id: int) -> None:
+    conn.execute("UPDATE users SET paused_at=NULL, pause_notified_at=NULL, last_active=? WHERE id=?", (now_iso(), user_id))
+    conn.commit()
+
+
+def last_run_started(conn: Conn) -> str | None:
+    row = conn.execute("SELECT started_at FROM runs WHERE status IN ('ok', 'partial', 'running') "
+                       "ORDER BY id DESC LIMIT 1").fetchone()
+    return row["started_at"] if row else None
 
 
 def list_users(conn: Conn) -> list[dict]:
@@ -602,7 +654,7 @@ def rejected_listings(conn: Conn, user_id: int, limit: int = 500) -> list[dict]:
     rows = conn.execute(
         "SELECT us.url_key, s.url, s.company, s.role, s.source, us.reason, us.detail, us.first_seen, us.last_seen "
         "FROM user_seen us JOIN seen s ON s.url_key = us.url_key "
-        "WHERE us.user_id=? AND us.verdict IN ('rejected','duplicate') "
+        "WHERE us.user_id=? AND us.verdict IN ('rejected','duplicate') AND COALESCE(us.reason, '') <> 'not_internship' "
         "AND us.url_key NOT IN (SELECT url_key FROM jobs WHERE user_id=?) "
         "ORDER BY us.last_seen DESC LIMIT ?",
         (user_id, user_id, limit),

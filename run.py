@@ -108,8 +108,12 @@ def main(argv=None) -> int:
         try:
             whitelist = workspace.companies(conn)
             fetch_profile = workspace.fetch_profile(conn)
-            users = [RunUser(u["id"], u["email"], workspace.effective_profile(conn, u))
-                     for u in workspace.run_users(conn)]
+            accounts = workspace.run_users(conn)
+            notes: list[str] = []
+            if workspace.is_cloud() and not args.rescore:
+                from bot.activity import apply_inactivity
+                accounts, notes = apply_inactivity(conn, accounts)
+            users = [RunUser(u["id"], u["email"], workspace.effective_profile(conn, u)) for u in accounts]
         except (OSError, ValueError) as exc:
             logging.error("Config problem: %s", exc)
             return 2
@@ -136,7 +140,7 @@ def main(argv=None) -> int:
 
         run = Run(conn, fetch_profile, sources, args.trigger,
                   {"company": args.company, "source": args.source, "dry_run": args.dry_run},
-                  whitelist=whitelist, users=users)
+                  whitelist=whitelist, users=users, notes=notes)
         result = run.execute()
     except db.RunInProgress as exc:
         logging.error("%s. Wait for it to finish (watch it on the Bot activity page).", exc)

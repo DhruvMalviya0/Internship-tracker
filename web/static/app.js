@@ -135,7 +135,7 @@ const jobOrigin = (j) => (j.source === 'manual'
   ? `added by you${j.platform ? ` from ${j.platform}` : ''}`
   : `${FEEDS.has(j.source) ? 'via ' : ''}${(FEEDS.has(j.source) && j.platform) || sourceLabel(j.source)}`);
 const todayIso = () => new Date().toLocaleDateString('en-CA');
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word, many) => `${n} ${n === 1 ? word : (many || `${word}s`)}`;
 
 let toastTimer;
 function toast(msg, isError = false) {
@@ -277,14 +277,24 @@ function renderPill(st) {
   }
 }
 
+function matchedText(m) {
+  if (!m) return '';
+  if (m.profile_incomplete) return 'Add skills in Settings so the bot can match internships for you.';
+  const added = m.new || 0;
+  if (!m.checked) return 'No new postings since your last match.';
+  return `Matched you against ${m.checked} recent posting${m.checked === 1 ? '' : 's'}: ${added} new for you.`;
+}
+
 async function startRun() {
   const btn = $('#runBtn');
   btn.disabled = true;
   try {
-    await api('POST', '/api/runs');
-    toast('Bot started. Watch it on Bot activity.');
+    const r = await api('POST', '/api/runs');
+    toast([matchedText(r.matched), r.note].filter(Boolean).join(' '));
+    if (r.matched && r.matched.new) softRefreshJobs();
     setTimeout(pollStatus, 1200);
-    if (S.view === 'activity') setTimeout(() => renderView(), 1500);
+    if (S.view === 'activity' && r.started) setTimeout(() => renderView(), 1500);
+    if (!r.started) btn.disabled = false;
   } catch (err) {
     toast(err.message, true);
     btn.disabled = false;
@@ -1541,7 +1551,8 @@ async function renderSettings(root, token) {
       dirty(false);
       S.meta = await api('GET', '/api/meta');
       S.me = await api('GET', '/api/me');
-      toast(S.me.cloud ? 'Saved. Applies on the next bot run.' : 'Saved to profile.json. Applies on the next bot run.');
+      const found = res.matched && res.matched.new ? ` Found ${plural(res.matched.new, 'new match', 'new matches')} from recent postings.` : '';
+      toast((S.me.cloud ? 'Saved.' : 'Saved to profile.json.') + (found || ' Applies on the next bot run.'));
     } catch (err) {
       errorBox.textContent = err.message;
       errorBox.hidden = false;
@@ -1615,6 +1626,7 @@ async function boot() {
   $('#runBtn').hidden = S.me.cloud && !S.me.can_run;
   $('#runBtn').addEventListener('click', startRun);
   renderUserMenu();
+  if (S.me.resumed) toast('Welcome back! Your daily search was paused while you were away; it’s back on.');
   $('#scrim').addEventListener('click', () => closeDrawer());
   addEventListener('hashchange', route);
   addEventListener('keydown', (e) => {

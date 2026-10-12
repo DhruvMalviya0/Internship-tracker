@@ -9,7 +9,7 @@ import time
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import db, filters, flags, notes, programs, scoring
 from .config import Company
@@ -153,7 +153,7 @@ class RunUser:
 class Run:
     def __init__(self, conn: Conn, fetch_profile: dict, sources: list[Company], trigger: str,
                  run_args: dict | None = None, whitelist: list[Company] | None = None,
-                 users: list[RunUser] | None = None):
+                 users: list[RunUser] | None = None, notes: list[str] | None = None):
         """sources: company boards and feeds to fetch. whitelist: every vetted company (recognizes them in feed
         results). users: whose trackers to fill; each is judged by their own profile."""
         self.conn, self.trigger = conn, trigger
@@ -162,6 +162,7 @@ class Run:
         self.whitelist = {c.name.strip().lower(): c for c in (whitelist if whitelist is not None else sources)
                           if not c.is_feed}
         self.users = users or []
+        self.notes = notes or []
         net = fetch_profile["network"]
         self.workers = max(1, int(net.get("max_workers", 6)))
         self.http = HttpClient(net["user_agent"], net.get("min_delay_seconds", 1.0), net.get("timeout_seconds", 30),
@@ -223,6 +224,8 @@ class Run:
                                         f"{len(enabled) - boards} job feeds for {len(self.users)} "
                                         f"account{'s' if len(self.users) != 1 else ''}, {self.workers} parallel "
                                         "workers, 1 request/sec per host")
+            for note in self.notes:
+                self.event("info", "accounts", note)
             for u in self.users:
                 filled = db.fill_followups(self.conn, u.id, u.profile["drafts"].get("followup_days", 7))
                 if filled:
@@ -529,5 +532,47 @@ def rescore_user(conn: Conn, user_id: int, profile: dict, companies: list[Compan
         after = conn.execute("SELECT status FROM jobs WHERE id=?", (row["id"],)).fetchone()["status"]
         if after == "Skipped (red flag)" and row["status"] != after:
             counts["moved_to_skipped"] += 1
+    conn.commit()
+    return dict(counts)
+
+
+def match_from_cache(conn: Conn, user_id: int, profile: dict, companies: list[Company], days: int = 7) -> dict:
+    """Matches one user against every posting the bot fetched in the last `days` days that hasn't been judged for
+    them yet. No network: gives new users (or users who just changed their skills) results in seconds.
+    Postings other users added by hand are never shared."""
+    if not workspace_profile_complete(profile):
+        return {"checked": 0, "new": 0, "skipped": 0, "profile_incomplete": True}
+    since = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+    judged = {r["url_key"] for r in conn.execute("SELECT url_key FROM user_seen WHERE user_id=?", (user_id,))}
+    rows = [r for r in conn.execute("SELECT url_key, job_json FROM seen WHERE last_seen >= ? AND job_json IS NOT NULL "
+                                    "AND COALESCE(source, '') <> 'manual'", (since,)).fetchall()
+            if r["url_key"] not in judged]
+    counts = Counter(checked=0, new=0, skipped=0)
+    if not rows:
+        return dict(counts)
+    templates = flags.TemplateIndex.from_conn(conn)
+    whitelist = {c.name.strip().lower(): c for c in companies}
+    domain_age = flags.DomainChecker(conn, None).age_days
+    for r in rows:
+        job = Job.from_dict(json.loads(r["job_json"]))
+        if job.source == "manual":
+            continue
+        counts["checked"] += 1
+        context = {"template_others": templates.others(job.company, job.description)}
+        ev = evaluate(job, resolve_company(job, whitelist), profile, domain_age, context=context)
+        if not ev.kept:
+            db.upsert_user_seen(conn, user_id, None, r["url_key"], "rejected", ev.reason, ev.detail)
+            if ev.reason != "not_internship":
+                counts["skipped"] += 1
+            continue
+        if db.find_duplicate(conn, user_id, r["url_key"], job.company, job.title) and \
+                not db.job_exists(conn, user_id, r["url_key"]):
+            db.upsert_user_seen(conn, user_id, None, r["url_key"], "duplicate", "duplicate", "same company and title")
+            counts["skipped"] += 1
+            continue
+        db.upsert_user_seen(conn, user_id, None, r["url_key"], "kept")
+        state, _ = db.upsert_job(conn, user_id, None, r["url_key"], ev.record, machine_hash(ev.record),
+                                 ev.initial_status, ev.note, ev.answers)
+        counts[state] += 1
     conn.commit()
     return dict(counts)

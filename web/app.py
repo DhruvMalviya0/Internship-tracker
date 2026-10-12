@@ -106,6 +106,8 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
             g.user = db.get_user(get_conn(), session["uid"])
             if g.user is None:
                 session.clear()
+            elif request.path.startswith("/api/"):
+                db.touch_user(get_conn(), g.user)  # "last active" drives pausing inactive accounts
         if request.path.startswith("/api/") and g.user is None:
             return jsonify({"error": "Sign in required"}), 401
         if demo and request.method in ("PUT", "DELETE") and request.path in ("/api/profile", "/api/sources",
@@ -167,11 +169,14 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
         return HttpClient(net["user_agent"], net.get("min_delay_seconds", 1), net.get("timeout_seconds", 30), 1)
 
     def can_run() -> bool:
-        if demo:
-            return False
-        if not cloud:
-            return True
-        return is_admin() and bool(env("GITHUB_REPO") and env("GITHUB_TOKEN"))
+        return not demo
+
+    def run_cooldown_minutes() -> int:
+        """Minimum gap between full source checks started by regular users (admins can always start one)."""
+        try:
+            return max(0, int(env("RUN_COOLDOWN_MINUTES") or 120))
+        except ValueError:
+            return 120
 
     # ------------------------------------------------------------------ pages
 
@@ -209,9 +214,15 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
     @app.get("/api/me")
     def api_me():
         u, p = me(), profile()
+        resumed = False
+        if cloud and u.get("paused_at"):
+            db.resume_user(get_conn(), u["id"])  # coming back switches the daily search on again
+            resumed = True
+        from bot.activity import inactive_days
         return jsonify({"id": u["id"], "email": u["email"], "name": u.get("name") or "", "picture": u.get("picture") or "",
                         "is_admin": is_admin(), "cloud": cloud, "demo": demo, "can_run": can_run(),
-                        "profile_complete": workspace.profile_complete(p),
+                        "profile_complete": workspace.profile_complete(p), "resumed": resumed,
+                        "inactive_days": inactive_days() if cloud else None,
                         "run_schedule": os.environ.get("RUN_SCHEDULE_TEXT", "daily at 9:00 IST") if cloud else ""})
 
     @app.delete("/api/account")
@@ -345,28 +356,46 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
 
     @app.post("/api/runs")
     def start_run():
+        """Run bot now: (1) instantly match this user against postings fetched in the last week, then (2) start a
+        fresh check of every source in the background, unless one ran recently (regular users) or is running."""
         if demo:
             raise ApiError(409, "Demo mode: start the tracker without --demo to run the bot.")
-        if cloud:
-            if not is_admin():
-                raise ApiError(403, "The bot runs automatically every day. Only admins can start extra runs.")
-            return jsonify(_dispatch_github_run())
+        conn, u, p = get_conn(), me(), profile()
+        matched = pipeline.match_from_cache(conn, u["id"], p, workspace.companies(conn))
+        started, note = False, ""
         state = app.extensions["tracker"]
         with state["run_lock"]:
-            if (current := db.current_run(get_conn())):
-                raise ApiError(409, f"Run #{current['id']} is already running.")
-            cmd = [sys.executable, str(config.ROOT / "run.py"), "--trigger", "web", "--db", state["target"]]
-            flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-            subprocess.Popen(cmd, cwd=config.ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             stdin=subprocess.DEVNULL, creationflags=flags)
-        return jsonify({"started": True})
+            current = db.current_run(conn)
+            last = db.last_run_started(conn)
+            wait = 0
+            if cloud and not is_admin() and last:
+                from datetime import datetime
+                elapsed = (datetime.now() - datetime.fromisoformat(last)).total_seconds() / 60
+                wait = max(0, int(run_cooldown_minutes() - elapsed))
+            if current:
+                note = f"A full check of every source is already running (run #{current['id']}); results appear as it goes."
+            elif wait:
+                note = (f"Every source was checked {int((run_cooldown_minutes() - wait))} min ago, so a new full "
+                        f"check can start in {wait} min. Your matches from that check are already in.")
+            else:
+                _launch_full_run(state)
+                started = True
+                note = "A fresh check of every source started. Watch it on Bot activity; new matches appear as it runs."
+        return jsonify({"started": started, "note": note, "matched": matched})
+
+    def _launch_full_run(state: dict) -> None:
+        if cloud and env("GITHUB_REPO") and env("GITHUB_TOKEN"):
+            _dispatch_github_run()
+            return
+        cmd = [sys.executable, str(config.ROOT / "run.py"), "--trigger", "web"]
+        if not cloud:
+            cmd += ["--db", state["target"]]
+        flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        subprocess.Popen(cmd, cwd=config.ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         stdin=subprocess.DEVNULL, creationflags=flags)
 
     def _dispatch_github_run() -> dict:
         repo, token = env("GITHUB_REPO"), env("GITHUB_TOKEN")
-        if not (repo and token):
-            raise ApiError(409, "Run now isn't set up: add GITHUB_REPO and GITHUB_TOKEN to the server's environment.")
-        if db.current_run(get_conn()):
-            raise ApiError(409, "A run is already in progress.")
         workflow = os.environ.get("GITHUB_WORKFLOW", "daily-run.yml")
         r = requests.post(f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
                           headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
@@ -404,11 +433,14 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
         data = body().get("profile")
         if not isinstance(data, dict):
             raise ApiError(400, "profile must be an object")
+        conn = get_conn()
         try:
-            saved = workspace.save_user_profile(get_conn(), me(), data)
+            saved = workspace.save_user_profile(conn, me(), data)
         except ValueError as exc:
             raise ApiError(422, str(exc))
-        return jsonify({"profile": saved, "saved": True})
+        # New or changed skills: match against recent postings right away instead of waiting for tomorrow's run.
+        matched = pipeline.match_from_cache(conn, me()["id"], profile(), workspace.companies(conn)) if not demo else None
+        return jsonify({"profile": saved, "saved": True, "matched": matched})
 
     @app.put("/api/sources")
     @admin_only
