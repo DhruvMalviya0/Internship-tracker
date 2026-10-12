@@ -88,12 +88,27 @@ If you set `PUBLIC_URL` after the first deploy, Render redeploys automatically.
    It then runs every day at 9:00 IST (GitHub sometimes starts scheduled jobs a few minutes late).
 3. Watch it on the website's **Bot activity** page; the run log is also attached to each workflow run.
 
-### Optional: the "Run bot now" button on the website
+### Pause notices for inactive accounts
+
+The daily run skips accounts nobody has opened for 14 days and emails them once ("your daily search is
+paused"); signing in switches it back on. For the email to go out from GitHub Actions, add these repository
+secrets too (same values as on Render): `PUBLIC_URL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+`EMAIL_FROM`. Without them the account is still paused, just without the email. To change the 14 days, add a
+repository **variable** (not secret) `INACTIVE_DAYS`.
+
+### "Run bot now"
+
+Every signed-in user has **Run bot now**. It first matches them against everything fetched in the last 7 days
+(instant, no fetching), then starts a fresh check of every source on the Render server. Regular users can start
+a fresh check at most every 2 hours (`RUN_COOLDOWN_MINUTES` on Render); admins any time. Saving a profile also
+matches against recent postings straight away, so new users see results without waiting for 9:00.
+
+### Optional: run the "Run bot now" checks on GitHub instead of Render
 
 1. GitHub → your avatar → **Settings → Developer settings → Fine-grained tokens → Generate** → only your
    `internship-tracker` repo → **Repository permissions → Actions: Read and write** → generate, copy.
 2. On Render add `GITHUB_REPO=YOUR-USERNAME/internship-tracker` and `GITHUB_TOKEN=<that token>`.
-   Admins now see **Run bot now**; it starts the same GitHub workflow.
+   Fresh checks started from the website then run on GitHub Actions instead of the Render server.
 
 ## 7. Bring your existing tracker online
 
@@ -127,6 +142,8 @@ powershell -ExecutionPolicy Bypass -File scripts\schedule_windows.ps1 -Remove
   an account once it has at least one skill.
 - **Admins** (`ADMIN_EMAILS`) also edit the shared sources everyone's matches come from: the company
   whitelist (Companies page) and the job feeds (Settings → Shared sources), and can start extra runs.
+- **Inactive accounts** (no visit for 14 days) are paused and emailed once; their data is kept and the search
+  resumes when they sign in.
 - **Delete my account** (bottom of Settings) permanently removes that person's data.
 - Sessions last 30 days. Sign-in links work once and expire after 15 minutes; requests are rate-limited.
 
