@@ -33,8 +33,10 @@ class Evaluation:
     answers: str = ""
 
 
-def evaluate(job: Job, company: Company, profile: dict, domain_age, force: bool = False) -> Evaluation:
-    """Applies filters, scoring, flags and drafts. force=True skips the reject rules (used by 'Track anyway')."""
+def evaluate(job: Job, company: Company, profile: dict, domain_age, force: bool = False,
+             context: dict | None = None) -> Evaluation:
+    """Applies filters, scoring, flags and drafts. force=True skips the reject rules (used by 'Track anyway').
+    context: run-wide facts, e.g. {"template_others": [companies posting the same text]}."""
     junior_ok = bool(job.via) and profile["filters"].get("include_junior_roles",
                                                          profile.get("feeds", {}).get("include_junior_roles", False))
     entry = is_entry_level(job.title) or is_entry_level(job.employment_type)
@@ -70,8 +72,19 @@ def evaluate(job: Job, company: Company, profile: dict, domain_age, force: bool 
     night = flags.night_shift(job, profile)
     whitelisted = not company.is_feed and bool(company.board_token)
     red = flags.red_flags(job, company, paid, domain_age(company.website or job.company_url), profile, whitelisted)
-
     warnings = []
+    if flags.is_blocked(job.company, profile):
+        red.insert(0, f"You marked {job.company} as not a real employer")
+    if not whitelisted:  # vetted companies on the whitelist are trusted by name
+        name_red, name_warn = flags.company_name_flags(job.company)
+        red += name_red
+        warnings += name_warn
+    copies = (context or {}).get("template_others") or []
+    if copies:
+        shown = ", ".join(copies[:3]) + (f" and {len(copies) - 3} more" if len(copies) > 3 else "")
+        red.append(f"The same posting text is used by {len(copies)} other compan{'y' if len(copies) == 1 else 'ies'} "
+                   f"({shown}): a mass-posted template, common with pay-to-train outfits")
+
     if phrase:
         warnings.append(f"Tracked manually despite: {phrase}")
     if reg.reject_detail:
@@ -154,6 +167,7 @@ class Run:
         self.http = HttpClient(net["user_agent"], net.get("min_delay_seconds", 1.0), net.get("timeout_seconds", 30),
                                net.get("retries", 3), pool=self.workers + 2)
         self.domains = flags.DomainChecker(conn, self.http)
+        self.templates = flags.TemplateIndex.from_conn(conn)
         self.counts: Counter = Counter()
         self.company_results: list[dict] = []
         self.progress_q: queue.Queue = queue.Queue()
@@ -336,6 +350,8 @@ class Run:
 
         open_keys: set[str] = set()
         kept_any: set[str] = set()
+        for job in out.jobs:  # index first so copies within this batch are seen too
+            self.templates.add(job.company, job.description)
         for job in out.jobs:
             key = normalize_url(job.url)
             if not key:
@@ -343,8 +359,9 @@ class Run:
             open_keys.add(key)
             db.upsert_posting(self.conn, self.run_id, key, job.to_dict())
             company = resolve_company(job, self.whitelist, c)
+            context = {"template_others": self.templates.others(job.company, job.description)}
             for u in self.active_users:
-                if self._evaluate_for(u, job, key, company):
+                if self._evaluate_for(u, job, key, company, context):
                     kept_any.add(key)
         result["kept"] = len(kept_any)
 
@@ -356,8 +373,8 @@ class Run:
                                closed["id"], user=u)
         self._save_company_state(out, result)
 
-    def _evaluate_for(self, u: RunUser, job: Job, key: str, company: Company) -> bool:
-        ev = evaluate(job, company, u.profile, self.domains.age_days)
+    def _evaluate_for(self, u: RunUser, job: Job, key: str, company: Company, context: dict | None = None) -> bool:
+        ev = evaluate(job, company, u.profile, self.domains.age_days, context=context)
         if not ev.kept:
             self._record_skip(u, job, key, ev.reason, ev.detail)
             return False

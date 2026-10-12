@@ -373,7 +373,8 @@
     "signature": ""
   },
   "red_flags": {
-    "new_domain_days": 180
+    "new_domain_days": 180,
+    "blocked_companies": []
   },
   "llm_scoring": {
     "enabled": false

@@ -1,6 +1,7 @@
 """AI-screening, red-flag and night-shift detection, plus a cached domain-age check via RDAP."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import sqlite3
@@ -63,6 +64,72 @@ def red_flags(job: Job, company: Company, paid: str, domain_age_days: int | None
     if paid == "No" and not _INTERVIEW_RE.search(text):
         flags.append("Unpaid and no interview mentioned")
     return flags
+
+
+# Pay-to-train outfits ("you're selected! now pay for the training/certificate") often post internships that read
+# like real jobs. Their names and copy-pasted postings give them away more reliably than the text does.
+_TRAINING_NAME_RE = re.compile(r"\b(internships?|interns?|placements?|training|job[- ]?guarantee)\b", re.I)
+_EDU_NAME_RE = re.compile(
+    r"\b(edu\s?tech|edutech|edtech|academy|learning|institute|skills?|careers?|education|coaching|bootcamps?|"
+    r"certifications?|tutorials?)\b", re.I)
+_FP_CLEAN_RE = re.compile(r"[^a-z]+")
+TEMPLATE_MIN_CHARS = 400
+
+
+def company_name_flags(company: str) -> tuple[list[str], list[str]]:
+    """(red flags, warnings) from the company name alone."""
+    red, warn = [], []
+    if m := _TRAINING_NAME_RE.search(company or ""):
+        red.append(f"Company name suggests a training / placement provider, not an employer (“{m.group(0)}”). "
+                   "These often ask for a fee after you're selected.")
+    elif m := _EDU_NAME_RE.search(company or ""):
+        warn.append(f"Company looks like an education / training business (“{m.group(0)}”). Check that they "
+                    "don't ask for any payment (training, certificate, registration) before you apply.")
+    return red, warn
+
+
+def is_blocked(company: str, profile: dict) -> bool:
+    blocked = {b.strip().lower() for b in profile.get("red_flags", {}).get("blocked_companies", []) if b.strip()}
+    return (company or "").strip().lower() in blocked
+
+
+def fingerprint(description: str, company: str) -> str | None:
+    """Text fingerprint of a posting body with the company name removed; None when too short to be meaningful
+    (feeds like the GitHub lists only carry a one-line description)."""
+    text = (description or "").lower()
+    for part in (company or "").lower().split():
+        if len(part) > 2:
+            text = text.replace(part, " ")
+    text = _FP_CLEAN_RE.sub(" ", text).strip()
+    if len(text) < TEMPLATE_MIN_CHARS:
+        return None
+    return hashlib.sha1(text[:1500].encode()).hexdigest()
+
+
+class TemplateIndex:
+    """Which companies have posted the same posting text (fingerprint -> company names)."""
+
+    def __init__(self):
+        self.by_fp: dict[str, set[str]] = {}
+
+    @classmethod
+    def from_conn(cls, conn) -> "TemplateIndex":
+        idx = cls()
+        for r in conn.execute("SELECT company, description FROM seen WHERE description IS NOT NULL"):
+            idx.add(r["company"], r["description"])
+        return idx
+
+    def add(self, company: str, description: str) -> None:
+        fp = fingerprint(description, company)
+        if fp:
+            self.by_fp.setdefault(fp, set()).add((company or "").strip())
+
+    def others(self, company: str, description: str) -> list[str]:
+        fp = fingerprint(description, company)
+        if not fp:
+            return []
+        me = (company or "").strip().lower()
+        return sorted(c for c in self.by_fp.get(fp, ()) if c.lower() != me)
 
 
 def registrable_domain(website: str) -> str:
