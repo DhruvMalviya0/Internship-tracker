@@ -28,6 +28,8 @@ from bot.fetchers import FETCHERS
 from bot.filters import REASON_LABELS
 from bot.http_client import HttpClient, RobotsDisallowed
 
+from bot.mailer import _env as env
+
 from .auth import init_auth
 
 log = logging.getLogger(__name__)
@@ -169,7 +171,7 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
             return False
         if not cloud:
             return True
-        return is_admin() and bool(os.environ.get("GITHUB_REPO") and os.environ.get("GITHUB_TOKEN"))
+        return is_admin() and bool(env("GITHUB_REPO") and env("GITHUB_TOKEN"))
 
     # ------------------------------------------------------------------ pages
 
@@ -360,7 +362,7 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
         return jsonify({"started": True})
 
     def _dispatch_github_run() -> dict:
-        repo, token = os.environ.get("GITHUB_REPO", ""), os.environ.get("GITHUB_TOKEN", "")
+        repo, token = env("GITHUB_REPO"), env("GITHUB_TOKEN")
         if not (repo and token):
             raise ApiError(409, "Run now isn't set up: add GITHUB_REPO and GITHUB_TOKEN to the server's environment.")
         if db.current_run(get_conn()):

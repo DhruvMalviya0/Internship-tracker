@@ -16,6 +16,7 @@ from authlib.integrations.flask_client import OAuth, OAuthError
 from flask import Blueprint, current_app, jsonify, redirect, request, session
 
 from bot import db, mailer, workspace
+from bot.mailer import _env as env
 
 log = logging.getLogger(__name__)
 bp = Blueprint("auth", __name__)
@@ -24,11 +25,11 @@ EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[A-Za-z]{2,}$")
 
 
 def _list_env(name: str) -> set[str]:
-    return {x.strip().lower() for x in os.environ.get(name, "").split(",") if x.strip()}
+    return {x.strip().lower() for x in env(name).split(",") if x.strip() and x.strip() not in mailer.PLACEHOLDERS}
 
 
 def google_enabled() -> bool:
-    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+    return bool(env("GOOGLE_CLIENT_ID") and env("GOOGLE_CLIENT_SECRET"))
 
 
 def is_allowed(email: str) -> bool:
@@ -44,7 +45,7 @@ def is_admin_email(email: str) -> bool:
 
 
 def public_url() -> str:
-    return (os.environ.get("PUBLIC_URL") or request.host_url).rstrip("/")
+    return (env("PUBLIC_URL") or request.host_url).rstrip("/")
 
 
 def init_auth(app) -> None:
@@ -52,8 +53,8 @@ def init_auth(app) -> None:
     if google_enabled():
         oauth.register(
             "google",
-            client_id=os.environ["GOOGLE_CLIENT_ID"],
-            client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+            client_id=env("GOOGLE_CLIENT_ID"),
+            client_secret=env("GOOGLE_CLIENT_SECRET"),
             server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
             client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
         )

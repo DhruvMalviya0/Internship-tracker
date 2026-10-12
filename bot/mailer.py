@@ -13,8 +13,13 @@ from email.message import EmailMessage
 log = logging.getLogger(__name__)
 
 
+PLACEHOLDERS = {"", "-", "none", "todo", "tbd", "x"}
+
+
 def _env(name: str) -> str:
-    return os.environ.get(name, "").strip()
+    """Env var value; placeholders like "-" (Render forms may require some value) count as unset."""
+    value = os.environ.get(name, "").strip()
+    return "" if value.lower() in PLACEHOLDERS else value
 
 
 def dev_log_mode() -> bool:
