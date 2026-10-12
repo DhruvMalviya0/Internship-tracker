@@ -1484,7 +1484,12 @@ async function renderSettings(root, token) {
         long ? h('textarea', { class: 'textarea', rows: 2, value: value || '', oninput: (e) => set(e.target.value) })
           : h('input', { class: 'input', value: value || '', oninput: (e) => set(e.target.value) }), hint);
     }
-    if (Array.isArray(value) && value.every((v) => typeof v !== 'object')) {
+    // Lists with a known item shape (skills, projects, boards) always get the card editor,
+    // even when empty; plain strings left over from older saves become items with that name.
+    if (Array.isArray(value) && LIST_TEMPLATES[key]) {
+      value.forEach((v, i) => { if (!v || typeof v !== 'object') value[i] = { ...structuredClone(LIST_TEMPLATES[key]), name: String(v ?? '') }; });
+    }
+    if (Array.isArray(value) && !LIST_TEMPLATES[key] && value.every((v) => typeof v !== 'object')) {
       if (compact) {
         return h('label', { class: 'field wide' }, h('span', null, labelize(key)),
           h('input', { class: 'input', value: value.join(', '), oninput: (e) => set(e.target.value.split(',').map((x) => x.trim()).filter(Boolean)) }), hint);
