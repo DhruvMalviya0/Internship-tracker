@@ -1,0 +1,388 @@
+{
+  "name": "",
+  "preferred_name": "",
+  "contact": {
+    "email": "",
+    "phone": "",
+    "portfolio": "",
+    "github": "",
+    "linkedin": ""
+  },
+  "location": {
+    "country": "India",
+    "city": "",
+    "timezone": "IST, UTC+5:30"
+  },
+  "skills": [
+    {
+      "name": "React",
+      "weight": 3,
+      "aliases": [
+        "react.js",
+        "reactjs"
+      ]
+    },
+    {
+      "name": "React Three Fiber",
+      "weight": 3,
+      "aliases": [
+        "r3f",
+        "react-three-fiber",
+        "three.js",
+        "threejs"
+      ]
+    },
+    {
+      "name": "Tailwind",
+      "weight": 2,
+      "aliases": [
+        "tailwind css",
+        "tailwindcss"
+      ]
+    },
+    {
+      "name": "Framer Motion",
+      "weight": 2,
+      "aliases": [
+        "framer-motion",
+        "motion.dev"
+      ]
+    },
+    {
+      "name": "GLSL",
+      "weight": 2,
+      "aliases": [
+        "shaders",
+        "shader",
+        "webgl"
+      ]
+    },
+    {
+      "name": "Design systems",
+      "weight": 2,
+      "aliases": [
+        "design system",
+        "component library",
+        "design tokens",
+        "ui kit"
+      ]
+    },
+    {
+      "name": "TypeScript",
+      "weight": 1,
+      "aliases": [
+        "ts"
+      ]
+    },
+    {
+      "name": "Next.js",
+      "weight": 1,
+      "aliases": [
+        "nextjs"
+      ]
+    },
+    {
+      "name": "GSAP",
+      "weight": 1,
+      "aliases": []
+    },
+    {
+      "name": "JavaScript",
+      "weight": 1,
+      "aliases": [
+        "js",
+        "es6"
+      ]
+    },
+    {
+      "name": "HTML/CSS",
+      "weight": 1,
+      "aliases": [
+        "html",
+        "css",
+        "html5",
+        "css3"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Portfolio website",
+      "url": "",
+      "summary": "an interactive 3D portfolio built with Next.js, React Three Fiber, custom GLSL shaders, GSAP and Framer Motion",
+      "tags": [
+        "react",
+        "react three fiber",
+        "three.js",
+        "glsl",
+        "shaders",
+        "webgl",
+        "framer motion",
+        "gsap",
+        "next.js",
+        "tailwind",
+        "3d",
+        "animation",
+        "frontend",
+        "creative"
+      ]
+    },
+    {
+      "name": "Pivot (Chrome extension)",
+      "url": "",
+      "summary": "a Chrome extension I designed and shipped end to end",
+      "tags": [
+        "chrome extension",
+        "browser extension",
+        "javascript",
+        "typescript",
+        "react",
+        "product",
+        "extension"
+      ]
+    },
+    {
+      "name": "Local AI apps",
+      "url": "",
+      "summary": "apps that run AI models locally, with interfaces I designed and built myself",
+      "tags": [
+        "ai",
+        "llm",
+        "machine learning",
+        "local",
+        "python",
+        "react",
+        "desktop"
+      ]
+    },
+    {
+      "name": "Client landing pages",
+      "url": "",
+      "summary": "landing pages designed and built for freelance clients with React, Tailwind and Framer Motion",
+      "tags": [
+        "landing page",
+        "marketing site",
+        "website",
+        "react",
+        "tailwind",
+        "framer motion",
+        "design systems",
+        "web",
+        "ui"
+      ]
+    }
+  ],
+  "filters": {
+    "remote_only": true,
+    "night_shift_ok": true,
+    "hours_min": 20,
+    "hours_max": 35,
+    "require_paid": true,
+    "min_score": 20,
+    "allowed_regions": [
+      "worldwide",
+      "anywhere",
+      "global",
+      "india",
+      "apac",
+      "asia",
+      "asia-pacific"
+    ],
+    "reject_phrases": [
+      "must be located in the us",
+      "must be located in the united states",
+      "must reside in the us",
+      "must reside in the united states",
+      "must be based in the us",
+      "must be based in the united states",
+      "us work authorization",
+      "u.s. work authorization",
+      "authorized to work in the united states",
+      "authorized to work in the us",
+      "eligible to work in the united states",
+      "us citizens only",
+      "u.s. citizens only",
+      "eu only",
+      "must be located in the eu",
+      "must be based in europe",
+      "right to work in the uk",
+      "on-site role",
+      "on-site position",
+      "onsite role",
+      "work on-site",
+      "work onsite",
+      "relocation required",
+      "must relocate",
+      "willing to relocate",
+      "in-office",
+      "days in office",
+      "days a week in the office"
+    ],
+    "location_reject_terms": [
+      "on-site",
+      "onsite",
+      "in-office",
+      "in office",
+      "hybrid"
+    ],
+    "onsite_ok_locations": [],
+    "us_hours_phrases": [
+      "us hours",
+      "us time zones",
+      "us timezone",
+      "us time zone",
+      "pst",
+      "pacific time",
+      "eastern time",
+      "overlap with us",
+      "overlap with the us",
+      "north american hours",
+      "americas time zones"
+    ],
+    "include_junior_roles": false
+  },
+  "ai_screening_terms": [
+    "hirevue",
+    "one-way video interview",
+    "one way video interview",
+    "asynchronous interview",
+    "async video interview",
+    "recorded video interview",
+    "ai screening",
+    "ai-powered screening",
+    "ai interview",
+    "karat",
+    "codility",
+    "hackerrank",
+    "codesignal",
+    "coderbyte",
+    "testgorilla"
+  ],
+  "feeds": {
+    "remotive": {
+      "enabled": true,
+      "min_hours_between_fetches": 6
+    },
+    "weworkremotely": {
+      "enabled": true,
+      "categories": [
+        "remote-front-end-programming-jobs",
+        "remote-full-stack-programming-jobs",
+        "remote-design-jobs",
+        "remote-programming-jobs"
+      ],
+      "min_hours_between_fetches": 1
+    },
+    "hackernews": {
+      "enabled": true,
+      "months": 1,
+      "min_hours_between_fetches": 6
+    },
+    "internshala": {
+      "enabled": true,
+      "categories": [
+        "front-end-development",
+        "web-development",
+        "ui-ux-design",
+        "javascript-development",
+        "react-js-development"
+      ],
+      "max_new_details_per_run": 60,
+      "min_hours_between_fetches": 6
+    },
+    "unstop": {
+      "enabled": true,
+      "search_terms": [
+        "frontend",
+        "react",
+        "web development",
+        "ui ux",
+        "javascript",
+        "three.js"
+      ],
+      "min_hours_between_fetches": 6
+    },
+    "ycombinator": {
+      "enabled": true,
+      "pages": [
+        "software-engineer/remote",
+        "designer/remote",
+        "software-engineer"
+      ],
+      "min_hours_between_fetches": 6
+    },
+    "vcboards": {
+      "enabled": true,
+      "boards": [
+        {
+          "name": "Techstars",
+          "url": "https://jobs.techstars.com"
+        },
+        {
+          "name": "Antler",
+          "url": "https://careers.antler.co"
+        }
+      ],
+      "queries": [
+        "intern",
+        "frontend intern"
+      ],
+      "min_hours_between_fetches": 12
+    },
+    "peerlist": {
+      "enabled": true,
+      "pages": 3,
+      "min_hours_between_fetches": 6
+    },
+    "himalayas": {
+      "enabled": true,
+      "queries": [
+        "intern",
+        "frontend intern",
+        "design intern"
+      ],
+      "min_hours_between_fetches": 6
+    },
+    "remoteok": {
+      "enabled": true,
+      "min_hours_between_fetches": 6
+    },
+    "simplify": {
+      "enabled": true,
+      "repos": [
+        "SimplifyJobs/Summer2027-Internships"
+      ],
+      "min_hours_between_fetches": 6
+    },
+    "speedyapply": {
+      "enabled": true,
+      "files": [
+        "speedyapply/2027-SWE-College-Jobs/main/INTERN_INTL.md"
+      ],
+      "min_hours_between_fetches": 6
+    }
+  },
+  "goals": {
+    "weekly_min": 10,
+    "weekly_max": 15
+  },
+  "drafts": {
+    "followup_days": 7,
+    "start_date": "Immediately",
+    "expected_stipend": "",
+    "signature": ""
+  },
+  "red_flags": {
+    "new_domain_days": 180
+  },
+  "llm_scoring": {
+    "enabled": false
+  },
+  "network": {
+    "user_agent": "InternshipAssistant/1.0 (personal job-search tool; polite, rate-limited)",
+    "min_delay_seconds": 1,
+    "timeout_seconds": 30,
+    "max_workers": 6,
+    "retries": 3
+  }
+}

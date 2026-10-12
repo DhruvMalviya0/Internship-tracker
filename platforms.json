@@ -1,0 +1,71 @@
+{
+  "_help": "Shown on the Platforms page. mode: auto = the bot fetches it every run (source = the feed key in Settings → Job feeds, or 'boards' for your company whitelist); watch = the bot checks the program's dates (program = key); link = no automation possible, but pasting a job link into + Add internship reads the details; manual = needs a login or blocks automated requests, so the bot can't use it (reason says why). Edit freely.",
+  "groups": [
+    {
+      "name": "India-focused (automatic)",
+      "platforms": [
+        { "name": "Internshala", "mode": "auto", "source": "internshala", "url": "https://internshala.com/internships/work-from-home-front-end-development,ui-ux-design,web-development-internships/", "note": "Work-from-home listings in your categories (Settings → Job feeds). Detail pages are read once per internship for the stipend and full description." },
+        { "name": "Unstop", "mode": "auto", "source": "unstop", "url": "https://unstop.com/internships", "note": "Public search API, one search per keyword in Settings → Job feeds." },
+        { "name": "Peerlist", "mode": "auto", "source": "peerlist", "url": "https://peerlist.io/jobs", "note": "Public jobs API, newest jobs first." }
+      ]
+    },
+    {
+      "name": "Startups and VC portfolios (automatic)",
+      "platforms": [
+        { "name": "Company job boards", "mode": "auto", "source": "boards", "url": "#/companies", "note": "Greenhouse, Lever, Ashby and Workable boards of the companies on your whitelist." },
+        { "name": "Y Combinator jobs", "mode": "auto", "source": "ycombinator", "url": "https://www.ycombinator.com/jobs/role/software-engineer/remote", "note": "YC's public jobs pages (the same YC startups as Work at a Startup, without the login)." },
+        { "name": "Techstars & Antler portfolios", "mode": "auto", "source": "vcboards", "url": "https://jobs.techstars.com/jobs", "note": "Getro-hosted VC portfolio boards. Add more Getro boards in Settings → Job feeds → VC portfolio boards." },
+        { "name": "Hacker News: Who is hiring?", "mode": "auto", "source": "hackernews", "url": "https://news.ycombinator.com/submitted?id=whoishiring", "note": "Monthly thread via the HN Search API; posts that mention interns (or junior roles if enabled)." }
+      ]
+    },
+    {
+      "name": "Remote job boards (automatic)",
+      "platforms": [
+        { "name": "Himalayas", "mode": "auto", "source": "himalayas", "url": "https://himalayas.app/jobs", "note": "Public search API: internships open worldwide and to India." },
+        { "name": "Remote OK", "mode": "auto", "source": "remoteok", "url": "https://remoteok.com/remote-intern-jobs", "note": "Public API (credited and linked back, per its terms)." },
+        { "name": "Remotive", "mode": "auto", "source": "remotive", "url": "https://remotive.com/remote-jobs/software-dev", "note": "Public API; small 24h-delayed sample, fetched at most every 6 h per its terms." },
+        { "name": "We Work Remotely", "mode": "auto", "source": "weworkremotely", "url": "https://weworkremotely.com/categories/remote-front-end-programming-jobs", "note": "Category RSS feeds." }
+      ]
+    },
+    {
+      "name": "GitHub internship lists (automatic)",
+      "platforms": [
+        { "name": "SimplifyJobs / Simplify.jobs", "mode": "auto", "source": "simplify", "url": "https://github.com/SimplifyJobs/Summer2027-Internships", "note": "The repo's structured listings file (thousands of internships); only remote / India-eligible ones are evaluated." },
+        { "name": "speedyapply", "mode": "auto", "source": "speedyapply", "url": "https://github.com/speedyapply/2027-SWE-College-Jobs/blob/main/INTERN_INTL.md", "note": "International SWE internships table (includes India and remote roles)." }
+      ]
+    },
+    {
+      "name": "Open-source programs (dates watched automatically)",
+      "platforms": [
+        { "name": "Google Summer of Code", "mode": "watch", "program": "gsoc", "url": "https://summerofcode.withgoogle.com/", "note": "Paid, remote. The bot reads the official timeline API daily." },
+        { "name": "LFX Mentorship / CNCF mentoring", "mode": "watch", "program": "lfx", "url": "https://mentorship.lfx.linuxfoundation.org/", "note": "Paid ~12-week mentorships, three terms a year. Status from the CNCF mentoring repo (LFX's site blocks bots)." },
+        { "name": "Outreachy", "mode": "link", "url": "https://www.outreachy.org/", "note": "Two cohorts a year; no public data feed, so check the site. Track your application with + Add internship." },
+        { "name": "MLH Fellowship", "mode": "link", "url": "https://fellowship.mlh.com/", "note": "Batches through the year; no public feed. Track applications with + Add internship." },
+        { "name": "Open Source Promotion Plan (OSPP)", "mode": "link", "url": "https://summer-ospp.ac.cn/", "note": "Summer program; no public feed." },
+        { "name": "Google Season of Docs", "mode": "link", "url": "https://developers.google.com/season-of-docs", "note": "Technical writing; check whether a season is running." },
+        { "name": "FOSSASIA internships / Codeheat", "mode": "link", "url": "https://fossasia.org/", "note": "No public feed; check the site." }
+      ]
+    },
+    {
+      "name": "Can't be automated (login or bot protection)",
+      "platforms": [
+        { "name": "Wellfound (AngelList)", "mode": "manual", "url": "https://wellfound.com/jobs", "note": "Serves a bot check to automated requests. Getting around that isn't something this tool does. Browse it and use + Add internship (fill the form)." },
+        { "name": "YC Work at a Startup", "mode": "manual", "url": "https://www.workatastartup.com/jobs", "note": "Needs a login. Covered by the automatic Y Combinator jobs source above." },
+        { "name": "Otta / Welcome to the Jungle", "mode": "manual", "url": "https://app.welcometothejungle.com/", "note": "Needs a login." },
+        { "name": "Handshake", "mode": "manual", "url": "https://joinhandshake.com/", "note": "Needs a university login (mostly US/UK universities)." },
+        { "name": "WayUp", "mode": "manual", "url": "https://www.wayup.com/s/internships/", "note": "Serves a bot check; mostly US roles." },
+        { "name": "Built In", "mode": "link", "url": "https://builtin.com/jobs/remote/dev-engineering/internship", "note": "No public data feed and mostly US-only roles. Paste links to import." },
+        { "name": "Cutshort", "mode": "link", "url": "https://cutshort.io/jobs", "note": "Jobs load inside the app after sign-in; paste links to import." },
+        { "name": "Instahyre", "mode": "manual", "url": "https://www.instahyre.com/", "note": "Its search API has 13,000 full-time roles and no working internship filter (69 internships total)." },
+        { "name": "Cuvette", "mode": "manual", "url": "https://cuvette.tech/", "note": "Didn't respond to requests from this computer." },
+        { "name": "Peak XV, Lightspeed, a16z portfolio boards", "mode": "manual", "url": "https://careers.peakxv.com/jobs", "note": "Hosted on Consider, which rejects requests from outside its own page (CSRF check)." },
+        { "name": "X (Twitter) searches", "mode": "manual", "url": "https://x.com/search?q=(hiring%20OR%20%22looking%20for%22)%20(intern%20OR%20apprentice)%20remote&f=live", "note": "The X API is paid and needs your account; the link opens the advanced search from your list." },
+        { "name": "Discord / Slack #jobs channels", "mode": "manual", "url": "https://www.reactiflux.com/", "note": "Reading servers needs a bot added by the server admins; automating your own account breaks Discord's rules." },
+        { "name": "Indie Hackers & Product Hunt", "mode": "manual", "url": "https://www.indiehackers.com/", "note": "No jobs feed; these are for reaching founders directly." },
+        { "name": "remoteintech directory", "mode": "link", "url": "https://remoteintech.company", "note": "A directory of remote-friendly companies, not job posts. Add ones you like to your Companies list (Test checks their board)." },
+        { "name": "Forage", "mode": "manual", "url": "https://www.theforage.com/simulations", "note": "Free unpaid virtual programs, so outside your paid-only rule (still good for your CV)." },
+        { "name": "Thiranex", "mode": "manual", "url": "https://thiranex.com/", "note": "Free (unpaid) virtual internships, so outside your paid-only rule." }
+      ]
+    }
+  ]
+}

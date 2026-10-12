@@ -1,0 +1,42 @@
+# Render Blueprint: New + → Blueprint → pick this repo. Values marked sync:false are filled in on Render.
+services:
+  - type: web
+    name: internship-tracker
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn "web.wsgi:app" --preload --workers 2 --threads 4 --timeout 60 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: APP_MODE
+        value: cloud
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL          # Neon connection string (with ?sslmode=require)
+        sync: false
+      - key: PUBLIC_URL            # e.g. https://internship-tracker.onrender.com
+        sync: false
+      - key: ADMIN_EMAILS          # your email; admins manage shared sources and can start runs
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SMTP_HOST             # optional: email sign-in links (e.g. smtp.gmail.com)
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD         # Gmail: an App Password, not your normal password
+        sync: false
+      - key: EMAIL_FROM            # e.g. Internship Tracker <you@gmail.com>
+        sync: false
+      - key: ALLOWED_EMAILS        # optional allow-list; leave empty to let anyone sign up
+        sync: false
+      - key: GITHUB_REPO           # optional, for "Run bot now": owner/repo
+        sync: false
+      - key: GITHUB_TOKEN          # optional: fine-grained token with Actions read & write on that repo
+        sync: false

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Internship Tracker</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/applications">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c5 4 7 8 7 12a7 7 0 0 1-14 0c0-4 2-8 7-12Z"/><path d="M12 9v12" /></svg>
+      <span>Internship Tracker</span>
+      <span class="demo-badge" id="demoBadge" hidden>Demo data</span>
+    </a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#/applications" data-view="applications">Applications</a>
+      <a href="#/dashboard" data-view="dashboard">Dashboard</a>
+      <a href="#/platforms" data-view="platforms">Platforms</a>
+      <a href="#/activity" data-view="activity">Bot activity</a>
+      <a href="#/companies" data-view="companies">Companies</a>
+      <a href="#/settings" data-view="settings">Settings</a>
+    </nav>
+    <div class="topbar-right">
+      <a class="bot-pill" id="botPill" href="#/activity"><span class="dot"></span><span class="label">Loading…</span></a>
+      <button class="btn primary" id="runBtn" type="button">Run bot now</button>
+      <div class="user-menu" id="userMenu" hidden></div>
+    </div>
+  </header>
+  <main id="view" class="view" tabindex="-1"></main>
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Internship details" hidden></aside>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

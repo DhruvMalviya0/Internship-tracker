@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+data/
+logs/
+backups/
+*.bak
+.env
+.claude/
+
+# Your personal profile (email, phone, links). The repo ships profile.example.json instead.
+profile.json

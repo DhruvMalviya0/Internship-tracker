@@ -1,0 +1,21 @@
+name,category,ats,board_token,website,careers_url,has_ai_screening,enabled
+Figma,Big tech / design tools,greenhouse,figma,https://figma.com,https://job-boards.greenhouse.io/figma,Unknown,yes
+Vercel,Funded startup,greenhouse,vercel,https://vercel.com,https://job-boards.greenhouse.io/vercel,Unknown,yes
+Webflow,Funded startup,greenhouse,webflow,https://webflow.com,https://job-boards.greenhouse.io/webflow,Unknown,yes
+Discord,Funded startup,greenhouse,discord,https://discord.com,https://job-boards.greenhouse.io/discord,Unknown,yes
+Duolingo,Big tech,greenhouse,duolingo,https://duolingo.com,https://job-boards.greenhouse.io/duolingo,Unknown,yes
+GitLab,Big tech (remote-first),greenhouse,gitlab,https://gitlab.com,https://job-boards.greenhouse.io/gitlab,Unknown,yes
+Airbnb,Big tech,greenhouse,airbnb,https://airbnb.com,https://job-boards.greenhouse.io/airbnb,Unknown,yes
+Groww,Indian product company,greenhouse,groww,https://groww.in,https://job-boards.greenhouse.io/groww,Unknown,yes
+InMobi,Indian product company,greenhouse,inmobi,https://inmobi.com,https://job-boards.greenhouse.io/inmobi,Unknown,yes
+CRED,Indian product company,lever,cred,https://cred.club,https://jobs.lever.co/cred,Unknown,yes
+Meesho,Indian product company,lever,meesho,https://meesho.com,https://jobs.lever.co/meesho,Unknown,yes
+Zeta,Indian product company,lever,zeta,https://zeta.tech,https://jobs.lever.co/zeta,Unknown,yes
+Spotify,Big tech,lever,spotify,https://spotify.com,https://jobs.lever.co/spotify,Unknown,yes
+Linear,Funded startup,ashby,linear,https://linear.app,https://jobs.ashbyhq.com/linear,Unknown,yes
+Notion,Funded startup,ashby,notion,https://notion.com,https://jobs.ashbyhq.com/notion,Unknown,yes
+PostHog,YC startup (W20),ashby,posthog,https://posthog.com,https://jobs.ashbyhq.com/posthog,Unknown,yes
+Supabase,YC startup (S20),ashby,supabase,https://supabase.com,https://jobs.ashbyhq.com/supabase,Unknown,yes
+Sarvam AI,Indian product company,ashby,sarvam,https://sarvam.ai,https://jobs.ashbyhq.com/sarvam,Unknown,yes
+Atlan,Indian product company,ashby,atlan,https://atlan.com,https://jobs.ashbyhq.com/atlan,Unknown,yes
+Hugging Face,Funded startup,workable,huggingface,https://huggingface.co,https://apply.workable.com/huggingface/,Unknown,yes

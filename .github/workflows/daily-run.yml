@@ -1,0 +1,35 @@
+name: Daily internship run
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # 03:30 UTC = 09:00 IST (GitHub may start it a few minutes late)
+  workflow_dispatch:        # "Run bot now" on the website, or the Run workflow button on GitHub
+
+concurrency:
+  group: internship-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch, filter, score and track for every account
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APP_MODE: cloud
+        # Exit code 1 means some sources failed but the run finished; that's not a workflow failure.
+        run: python run.py --trigger ${{ github.event_name == 'workflow_dispatch' && 'web' || 'schedule' }} || [ $? -eq 1 ]
+      - name: Keep the run log for a week
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-log
+          path: logs/
+          retention-days: 7

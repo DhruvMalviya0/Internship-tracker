@@ -1,0 +1,3 @@
+# macOS / Linux: run the bot every day at 09:00. Edit with `crontab -e` and adjust the path.
+# Output goes to logs/run-YYYY-MM-DD.log; the cron line below only captures crashes.
+0 9 * * * cd "/path/to/Internship bot" && .venv/bin/python run.py --trigger schedule >> logs/cron.log 2>&1
