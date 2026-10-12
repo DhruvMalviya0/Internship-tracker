@@ -83,6 +83,8 @@ def main(argv=None) -> int:
     ap.add_argument("--db", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--trigger", default="cli", choices=("cli", "web", "schedule"), help=argparse.SUPPRESS)
     ap.add_argument("-v", "--verbose", action="store_true", help="show per-request progress")
+    ap.add_argument("--rescore", action="store_true",
+                    help="re-check already-tracked internships against current settings and red-flag rules (no fetching)")
     args = ap.parse_args(argv)
 
     log_path = setup_logging(args.verbose)
@@ -111,6 +113,14 @@ def main(argv=None) -> int:
         except (OSError, ValueError) as exc:
             logging.error("Config problem: %s", exc)
             return 2
+        if args.rescore:
+            from bot.flags import TemplateIndex
+            from bot.pipeline import rescore_user
+            templates = TemplateIndex.from_conn(conn)
+            for u in users:
+                res = rescore_user(conn, u.id, u.profile, whitelist, templates)
+                logging.info("Re-checked %s: %s", u.email, ", ".join(f"{k} {v}" for k, v in sorted(res.items())) or "nothing tracked")
+            return 0
         sources = whitelist + config.feed_sources(fetch_profile)
         if args.company:
             wanted = {c.lower() for c in args.company}

@@ -159,3 +159,15 @@ def ensure_local_setup(conn: Conn) -> dict:
 
 def copy_profile(profile: dict) -> dict:
     return copy.deepcopy(profile)
+
+
+def block_company(conn: Conn, user: dict, company: str) -> list[str]:
+    """Adds a company to this user's blocklist (profile.red_flags.blocked_companies). Returns the new list."""
+    profile = user_profile_raw(conn, user)
+    rf = profile.setdefault("red_flags", {})
+    blocked = [b for b in rf.get("blocked_companies", []) if b.strip()]
+    if company.strip().lower() not in {b.lower() for b in blocked}:
+        blocked.append(company.strip())
+    rf["blocked_companies"] = blocked
+    save_user_profile(conn, user, profile)
+    return blocked

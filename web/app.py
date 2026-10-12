@@ -106,6 +106,10 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
                 session.clear()
         if request.path.startswith("/api/") and g.user is None:
             return jsonify({"error": "Sign in required"}), 401
+        if demo and request.method in ("PUT", "DELETE") and request.path in ("/api/profile", "/api/sources",
+                                                                             "/api/companies", "/api/account"):
+            # Demo mode shares your real profile.json / companies.csv, so it must not change them.
+            return jsonify({"error": "Demo mode: settings are read-only. Start the tracker without --demo to edit them."}), 409
 
     @app.after_request
     def headers(resp: Response):
@@ -259,6 +263,23 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
             raise ApiError(404, "No such job")
         except LookupError as exc:
             raise ApiError(409, str(exc))
+
+    @app.post("/api/jobs/<int:job_id>/block")
+    def block_company(job_id: int):
+        """'Not a real employer': blocks the job's company for this user and skips their listings from it."""
+        conn, uid = get_conn(), me()["id"]
+        j = db.get_job(conn, uid, job_id)
+        if not j:
+            raise ApiError(404, "No such job")
+        if not demo:  # demo rows are fictional; don't touch your real blocklist
+            workspace.block_company(conn, me(), j["company"])
+        moved = db.skip_company_jobs(conn, uid, j["company"], f"You marked {j['company']} as not a real employer")
+        return jsonify({"job": db.get_job(conn, uid, job_id), "company": j["company"], "moved": moved})
+
+    @app.post("/api/rescore")
+    def rescore():
+        conn = get_conn()
+        return jsonify(pipeline.rescore_user(conn, me()["id"], profile(), workspace.companies(conn)))
 
     @app.post("/api/jobs/lookup")
     def lookup_job():

@@ -640,7 +640,17 @@ function renderDrawer(j) {
       h('div', { class: 'drawer-actions' },
         h('a', { class: 'btn primary', href: j.apply_url || j.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open application form ↗'),
         h('a', { class: 'btn', href: j.url, target: '_blank', rel: 'noopener noreferrer' }, FEEDS.has(j.source) ? `View on ${sourceLabel(j.source)} ↗` : 'View posting ↗'),
-        canApply ? h('button', { class: 'btn', type: 'button', onclick: () => changeStatus(j.id, 'Applied') }, icon('check', 'i'), 'I applied') : null)),
+        canApply ? h('button', { class: 'btn', type: 'button', onclick: () => changeStatus(j.id, 'Applied') }, icon('check', 'i'), 'I applied') : null,
+        h('button', { class: 'btn ghost danger', type: 'button', title: 'Pay-to-train outfit, fake company, or scam: block it',
+          onclick: async () => {
+            if (!confirm(`Mark ${j.company} as not a real employer?\n\nIts listings move to Skipped (red flag), and future ones are flagged automatically. You can undo this in Settings → Advanced → Blocked companies.`)) return;
+            try {
+              const r = await api('POST', `/api/jobs/${j.id}/block`);
+              toast(`Blocked ${r.company}${r.moved ? ` · ${plural(r.moved, 'listing')} moved to Skipped` : ''}`);
+              await softRefreshJobs();
+              renderDrawer(r.job);
+            } catch (err) { toast(err.message, true); }
+          } }, icon('flag', 'i'), 'Not a real employer'))),
     h('div', { class: 'drawer-body' },
       h('div', { class: 'notice' }, 'The bot never submits anything. Copy the note and answers below, apply on the company’s site, then set the status to Applied.'),
 
@@ -1408,6 +1418,7 @@ const HINTS = {
   weekly_max: 'Upper edge of your weekly goal band.',
   followup_days: 'When you mark a job Applied, the follow-up date is set this many days later.',
   new_domain_days: 'Company domains younger than this are a red flag.',
+  blocked_companies: 'Companies you marked as not real employers (pay-to-train, fake). Their listings are red-flagged. Remove a name to unblock.',
   min_delay_seconds: 'Minimum gap between requests to the same site.',
   max_workers: 'Companies fetched in parallel (each site still gets at most one request per delay).',
   user_agent: 'Identifies the bot to job boards.',
@@ -1543,7 +1554,20 @@ async function renderSettings(root, token) {
       h('div', null, h('h1', null, 'Settings'), h('p', null, S.me.cloud
         ? 'Your profile: skills, projects and filters the bot uses to match internships for you. Changes apply on the next run.'
         : 'Your profile.json, editable here. Changes apply on the next bot run.')),
-      h('div', { style: { display: 'flex', gap: '8px' } }, rawBtn, saveBtn)),
+      h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } }, h('button', {
+        class: 'btn', type: 'button', title: 'Apply your current settings and red-flag rules to internships you already track',
+        onclick: async (e) => {
+          if (S.dirtyView === 'settings') return toast('Save your changes first', true);
+          e.target.disabled = true;
+          try {
+            const r = await api('POST', '/api/rescore');
+            const parts = [`${r.checked || 0} checked`, `${r.updated || 0} updated`];
+            if (r.moved_to_skipped) parts.push(`${r.moved_to_skipped} moved to Skipped (red flag)`);
+            if (r.now_filtered_out) parts.push(`${r.now_filtered_out} no longer pass your filters`);
+            toast(`Re-checked: ${parts.join(' · ')}`);
+          } catch (err) { toast(err.message, true); }
+          e.target.disabled = false;
+        } }, 'Re-check tracked internships'), rawBtn, saveBtn)),
     errorBox,
     body,
     S.me.cloud ? h('section', { class: 'card settings-section danger-zone', style: { marginTop: '16px' } },

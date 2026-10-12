@@ -1,7 +1,6 @@
 """AI-screening, red-flag and night-shift detection, plus a cached domain-age check via RDAP."""
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 import sqlite3
@@ -73,7 +72,7 @@ _EDU_NAME_RE = re.compile(
     r"\b(edu\s?tech|edutech|edtech|academy|learning|institute|skills?|careers?|education|coaching|bootcamps?|"
     r"certifications?|tutorials?)\b", re.I)
 _FP_CLEAN_RE = re.compile(r"[^a-z]+")
-TEMPLATE_MIN_CHARS = 400
+TEMPLATE_MIN_LINE = 25
 
 
 def company_name_flags(company: str) -> tuple[list[str], list[str]]:
@@ -93,24 +92,33 @@ def is_blocked(company: str, profile: dict) -> bool:
     return (company or "").strip().lower() in blocked
 
 
-def fingerprint(description: str, company: str) -> str | None:
-    """Text fingerprint of a posting body with the company name removed; None when too short to be meaningful
-    (feeds like the GitHub lists only carry a one-line description)."""
+def posting_lines(description: str, company: str = "") -> set[str]:
+    """Normalized sentences/bullets of a posting (company name removed), ignoring very short ones."""
     text = (description or "").lower()
     for part in (company or "").lower().split():
         if len(part) > 2:
             text = text.replace(part, " ")
-    text = _FP_CLEAN_RE.sub(" ", text).strip()
-    if len(text) < TEMPLATE_MIN_CHARS:
-        return None
-    return hashlib.sha1(text[:1500].encode()).hexdigest()
+    out = set()
+    for line in re.split(r"\n+|(?<=[.!?;:])\s+", text):
+        norm = _FP_CLEAN_RE.sub(" ", line).strip()
+        if len(norm) >= TEMPLATE_MIN_LINE:
+            out.add(norm)
+    return out
 
 
 class TemplateIndex:
-    """Which companies have posted the same posting text (fingerprint -> company names)."""
+    """Finds postings whose text was copied across different company names, allowing small edits.
+
+    Lines a job site adds to every posting (Internshala's "only those candidates can apply who...") appear under
+    many companies, so lines shared by lots of companies are treated as boilerplate and ignored. A posting is a
+    copy of another company's when most of its remaining lines (60%+, at least 4) also appear under that company."""
+
+    MIN_SHARED = 4
+    MIN_RATIO = 0.6
 
     def __init__(self):
-        self.by_fp: dict[str, set[str]] = {}
+        self.line_companies: dict[str, set[str]] = {}
+        self.companies: set[str] = set()
 
     @classmethod
     def from_conn(cls, conn) -> "TemplateIndex":
@@ -120,16 +128,31 @@ class TemplateIndex:
         return idx
 
     def add(self, company: str, description: str) -> None:
-        fp = fingerprint(description, company)
-        if fp:
-            self.by_fp.setdefault(fp, set()).add((company or "").strip())
+        name = (company or "").strip().lower()
+        if not name:
+            return
+        self.companies.add(name)
+        for line in posting_lines(description, company):
+            self.line_companies.setdefault(line, set()).add(name)
+
+    BOILERPLATE_COMPANIES = 8
+
+    def _boilerplate_limit(self) -> int:
+        # Job-site boilerplate repeats under dozens of companies; a copied template under a handful of names.
+        return self.BOILERPLATE_COMPANIES
 
     def others(self, company: str, description: str) -> list[str]:
-        fp = fingerprint(description, company)
-        if not fp:
-            return []
         me = (company or "").strip().lower()
-        return sorted(c for c in self.by_fp.get(fp, ()) if c.lower() != me)
+        limit = self._boilerplate_limit()
+        lines = [l for l in posting_lines(description, company) if len(self.line_companies.get(l, ())) < limit]
+        if len(lines) < self.MIN_SHARED:
+            return []
+        shared: dict[str, int] = {}
+        for line in lines:
+            for other in self.line_companies.get(line, ()):
+                if other != me:
+                    shared[other] = shared.get(other, 0) + 1
+        return sorted(c for c, n in shared.items() if n >= self.MIN_SHARED and n / len(lines) >= self.MIN_RATIO)
 
 
 def registrable_domain(website: str) -> str:

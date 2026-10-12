@@ -666,7 +666,39 @@ def upsert_job(conn: Conn, user_id: int, run_id: int | None, url_key: str, rec: 
     if not row["drafts_edited"]:
         sets.update(note=note, answers=answers)
     conn.execute(f"UPDATE jobs SET {', '.join(f'{k}=?' for k in sets)} WHERE id=?", (*sets.values(), job_id))
+    if rec.get("red_flags") not in (None, "", "[]") and _status_untouched(conn, job_id):
+        _set_status(conn, job_id, "To Review", "Skipped (red flag)")
     return "updated", job_id
+
+
+def _status_untouched(conn: Conn, job_id: int) -> bool:
+    """True while the job is still in the status the bot gave it (the user never changed it)."""
+    row = conn.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    n = conn.execute("SELECT COUNT(*) n FROM status_history WHERE job_id=?", (job_id,)).fetchone()["n"]
+    return bool(row) and row["status"] == "To Review" and n <= 1
+
+
+def _set_status(conn: Conn, job_id: int, old: str, new: str) -> None:
+    now = now_iso()
+    conn.execute("UPDATE jobs SET status=?, status_changed_at=?, updated_at=? WHERE id=?", (new, now, now, job_id))
+    conn.execute("INSERT INTO status_history(job_id, from_status, to_status, at) VALUES (?,?,?,?)", (job_id, old, new, now))
+
+
+def skip_company_jobs(conn: Conn, user_id: int, company: str, flag: str) -> int:
+    """After the user blocks a company: add the red flag to all their jobs from it and move the ones they haven't
+    acted on yet (To Review / Ready to Apply) to Skipped (red flag). Returns how many were moved."""
+    moved = 0
+    for r in conn.execute("SELECT id, status, red_flags FROM jobs WHERE user_id=? AND lower(company)=lower(?)",
+                          (user_id, company)).fetchall():
+        red = json.loads(r["red_flags"] or "[]")
+        if flag not in red:
+            red.insert(0, flag)
+            conn.execute("UPDATE jobs SET red_flags=?, updated_at=? WHERE id=?", (json.dumps(red), now_iso(), r["id"]))
+        if r["status"] in ("To Review", "Ready to Apply"):
+            _set_status(conn, r["id"], r["status"], "Skipped (red flag)")
+            moved += 1
+    conn.commit()
+    return moved
 
 
 def mark_excluded(conn: Conn, user_id: int, url_key: str, reason: str) -> bool:

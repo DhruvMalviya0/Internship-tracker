@@ -496,3 +496,38 @@ def add_manual(conn: Conn, user_id: int, job: Job, profile: dict, companies: lis
             changes["applied_date"] = applied_date
         db.update_job_user_fields(conn, user_id, job_id, changes, profile["drafts"].get("followup_days", 7))
     return job_id, True, note
+
+
+def rescore_user(conn: Conn, user_id: int, profile: dict, companies: list[Company],
+                 templates: "flags.TemplateIndex | None" = None) -> dict:
+    """Re-applies the user's current settings, blocklist and red-flag rules to everything already in their tracker,
+    using the stored copy of each posting (no network). Statuses the user set are never changed; a job still in its
+    original To Review status moves to Skipped (red flag) if it now has red flags."""
+    templates = templates or flags.TemplateIndex.from_conn(conn)
+    whitelist = {c.name.strip().lower(): c for c in companies}
+    domain_age = flags.DomainChecker(conn, None).age_days
+    counts = Counter()
+    rows = conn.execute("SELECT id, url_key, status FROM jobs WHERE user_id=? AND is_demo=0", (user_id,)).fetchall()
+    for row in rows:
+        data = db.posting_json(conn, row["url_key"])
+        if not data:
+            counts["no_copy"] += 1
+            continue
+        counts["checked"] += 1
+        job = Job.from_dict(data)
+        company = resolve_company(job, whitelist)
+        context = {"template_others": templates.others(job.company, job.description)}
+        strict = evaluate(job, company, profile, domain_age, context=context)
+        ev = strict if strict.kept else evaluate(job, company, profile, domain_age, force=True, context=context)
+        state, _ = db.upsert_job(conn, user_id, None, row["url_key"], ev.record, machine_hash(ev.record),
+                                 ev.initial_status, ev.note, ev.answers)
+        counts[state] += 1
+        if not strict.kept and job.source != "manual":
+            db.mark_excluded(conn, user_id, row["url_key"],
+                             f"{filters.REASON_LABELS.get(strict.reason, strict.reason)}: {strict.detail}")
+            counts["now_filtered_out"] += 1
+        after = conn.execute("SELECT status FROM jobs WHERE id=?", (row["id"],)).fetchone()["status"]
+        if after == "Skipped (red flag)" and row["status"] != after:
+            counts["moved_to_skipped"] += 1
+    conn.commit()
+    return dict(counts)
