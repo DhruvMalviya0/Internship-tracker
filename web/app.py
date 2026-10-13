@@ -51,6 +51,12 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
     secret = os.environ.get("SECRET_KEY", "")
     if cloud and len(secret) < 32:
         raise RuntimeError("Set SECRET_KEY (32+ random characters) before running in cloud mode.")
+    if cloud and not db_target and not store.database_url().startswith(("postgres://", "postgresql://")) \
+            and os.environ.get("ALLOW_LOCAL_DB") != "1":
+        # Without Postgres the accounts would live in data/state.db, which Render's disk wipes on every
+        # restart: users, sign-ins and profiles silently disappear. Refuse to start instead.
+        raise RuntimeError("Cloud mode needs DATABASE_URL set to a Postgres connection string (e.g. Neon); "
+                           "the server's local disk is wiped on restart. Set ALLOW_LOCAL_DB=1 to test without one.")
     app.config.update(
         SECRET_KEY=secret or secrets.token_hex(32),
         SESSION_COOKIE_HTTPONLY=True,
