@@ -14,7 +14,7 @@ from . import store
 from .store import Conn
 
 STATUSES = [
-    "To Review", "Ready to Apply", "Applied", "Follow-up Due", "AI Interview / Assessment",
+    "To Review", "User Review Pending", "Ready to Apply", "Applied", "Follow-up Due", "AI Interview / Assessment",
     "Interview Scheduled", "Offer", "Rejected", "No Response", "Skipped (red flag)",
 ]
 APPLIED_STATUSES = {
@@ -909,6 +909,7 @@ def stats(conn: Conn, user_id: int, weeks: int = 12) -> dict:
         "rejections": by_status["Rejected"],
         "followups_due": followups_due,
         "to_review": by_status["To Review"],
+        "user_review_pending": by_status.get("User Review Pending", 0),
         "ready": by_status["Ready to Apply"],
         "by_status": by_status,
         "weekly": [{"week": k, "count": v} for k, v in per_week.items()],

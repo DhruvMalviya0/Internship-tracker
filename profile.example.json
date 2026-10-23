@@ -379,6 +379,20 @@
   "llm_scoring": {
     "enabled": false
   },
+  "gemini": {
+    "api_key": "",
+    "model": "gemini-1.5-flash"
+  },
+  "auto_apply": {
+    "enabled": false,
+    "max_per_run": 5,
+    "dry_run": false
+  },
+  "browser_apply": {
+    "cdp_url": "",
+    "user_data_dir": "",
+    "resume_path": ""
+  },
   "network": {
     "user_agent": "InternshipAssistant/1.0 (personal job-search tool; polite, rate-limited)",
     "min_delay_seconds": 1,

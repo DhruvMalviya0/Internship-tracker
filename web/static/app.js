@@ -384,8 +384,26 @@ async function renderApplications(root, token) {
     h('div', { class: 'view-head' },
       h('div', null, h('h1', null, 'Applications'),
         h('p', null, 'Internships the bot found and prepared. Review each one, apply on the company site yourself, then update its status here.')),
-      h('div', { style: { display: 'flex', gap: '8px' } },
+      h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
         h('a', { class: 'btn', href: '/api/jobs.csv', download: '' }, 'Export CSV'),
+        h('button', { class: 'btn auto-apply', type: 'button', title: 'Auto-apply to eligible applications without human verification',
+          onclick: async () => {
+            if (!confirm('Run auto-apply for eligible roles?\n\nThe bot will use Gemini AI to answer form questions on sites without login requirements or human verification.\nRoles requiring login, separate Google Docs/Forms, or CAPTCHAs will be moved to User Review Pending and listed in Bot activity.')) return;
+            try {
+              toast('Running auto-apply with Gemini...');
+              const res = await api('POST', '/api/auto-apply/batch');
+              const results = res.results || [];
+              const applied = results.filter(r => r.result && r.result.status === 'applied').length;
+              const pending = results.filter(r => r.result && r.result.status === 'user_review_pending').length;
+              const login = results.filter(r => r.result && r.result.error_code === 'login_required').length;
+              await softRefreshJobs();
+              toast(`Auto-apply completed: ${applied} applied, ${pending} moved to User Review Pending.`
+                + (login ? ` ${login} required login; see Bot activity → Access issues.` : ''));
+            } catch (err) {
+              toast(err.message, true);
+            }
+          }
+        }, icon('ai', 'i'), 'Auto-apply eligible ⚡'),
         h('button', { class: 'btn primary', type: 'button', onclick: () => openAddDialog() }, '+ Add internship'))),
     demoNote,
     S.me.profile_complete ? null : h('div', { class: 'banner warn-banner' }, icon('alert', 'i'),
@@ -629,7 +647,7 @@ function renderDrawer(j) {
   const drawer = $('#drawer');
   const savedNote = h('div', { class: 'saved-note', 'aria-live': 'polite' });
   const save = (field) => (e) => queueSave(j.id, field, e.target.value, savedNote);
-  const canApply = ['To Review', 'Ready to Apply'].includes(j.status);
+  const canApply = ['To Review', 'User Review Pending', 'Ready to Apply'].includes(j.status);
 
   const scoreFill = h('i');
   scoreFill.style.width = `${j.score ?? 0}%`;
@@ -639,6 +657,7 @@ function renderDrawer(j) {
   const noteArea = h('textarea', { class: 'textarea', rows: 9, value: j.note || '', 'aria-label': 'Tailored note', oninput: save('note') });
   const answersArea = h('textarea', { class: 'textarea mono', rows: 14, value: j.answers || '', 'aria-label': 'Prefilled answers', oninput: save('answers') });
   const flags = flagItems(j);
+  const loginHeld = (j.warnings || []).some((w) => /login required to apply|human verification required \(login\)|candidate account login/i.test(w));
 
   fill(drawer,
     h('div', { class: 'drawer-head' },
@@ -650,6 +669,28 @@ function renderDrawer(j) {
       h('div', { class: 'drawer-actions' },
         h('a', { class: 'btn primary', href: j.apply_url || j.url, target: '_blank', rel: 'noopener noreferrer' }, 'Open application form ↗'),
         h('a', { class: 'btn', href: j.url, target: '_blank', rel: 'noopener noreferrer' }, FEEDS.has(j.source) ? `View on ${sourceLabel(j.source)} ↗` : 'View posting ↗'),
+        canApply ? h('button', {
+          class: 'btn auto-apply', type: 'button', title: 'Auto-apply to this company using Gemini AI to answer questions',
+          onclick: async (e) => {
+            const btn = e.currentTarget;
+            btn.classList.add('loading');
+            const origText = btn.textContent;
+            btn.textContent = 'Applying with Gemini...';
+            try {
+              const res = await api('POST', `/api/jobs/${j.id}/auto-apply`);
+              if (res.job) {
+                await softRefreshJobs();
+                renderDrawer(res.job);
+              }
+              toast(res.message, res.status !== 'applied');
+            } catch (err) {
+              toast(err.message, true);
+            } finally {
+              btn.classList.remove('loading');
+              btn.textContent = origText;
+            }
+          }
+        }, icon('ai', 'i'), 'Auto-apply with Gemini ⚡') : null,
         canApply ? h('button', { class: 'btn', type: 'button', onclick: () => changeStatus(j.id, 'Applied') }, icon('check', 'i'), 'I applied') : null,
         h('button', { class: 'btn ghost danger', type: 'button', title: 'Pay-to-train outfit, fake company, or scam: block it',
           onclick: async () => {
@@ -662,7 +703,14 @@ function renderDrawer(j) {
             } catch (err) { toast(err.message, true); }
           } }, icon('flag', 'i'), 'Not a real employer'))),
     h('div', { class: 'drawer-body' },
-      h('div', { class: 'notice' }, 'The bot never submits anything. Copy the note and answers below, apply on the company’s site, then set the status to Applied.'),
+      j.status === 'User Review Pending'
+        ? h('div', { class: 'notice pending-notice' }, icon('alert', 'i'),
+            h('div', null, h('b', null, 'User Review Pending: '),
+              loginHeld
+                ? h('span', null, 'The site requires your account session. Use the separate browser applier after signing in: ',
+                    h('code', null, `python browser_apply.py --job-id ${j.id} --submit`), '. Review the warning below if it stops.')
+                : 'This application requires a separate Google Docs/Forms submission or human verification. Review the warning below and apply manually.'))
+        : h('div', { class: 'notice' }, 'The bot applies automatically to sites without login requirements, human verification, or separate Google Docs. Otherwise it safely pauses under User Review Pending.'),
 
       h('section', { class: 'section' },
         h('div', { class: 'section-head' }, h('h3', null, 'Tracking'), savedNote),
@@ -1101,7 +1149,9 @@ async function renderActivity(root, token) {
     h('div', { class: 'top' }, h('span', { class: 'when' }, `${fmtDate(r.started_at)} · ${fmtTime(r.started_at).slice(0, 5)}`),
       h('span', { class: `run-status ${r.status}` }, r.status === 'ok' ? 'OK' : r.status)),
     h('div', { class: 'meta' }, `#${r.id} · ${r.trigger} · ${r.status === 'running' ? 'running' : duration(r.started_at, r.finished_at)}`),
-    h('div', { class: 'meta' }, `${c.new || 0} added · ${c.skipped || 0} skipped · ${c.fetch_errors || 0} errors`));
+    h('div', { class: 'meta' }, `${c.new || 0} added · ${c.skipped || 0} skipped · ${c.fetch_errors || 0} errors`
+      + ((c.scraper_login_required || c.applier_login_required)
+        ? ` · ${c.scraper_login_required || 0} scraper login · ${c.applier_login_required || 0} applier login` : '')));
   }));
 
   const detail = h('div', { class: 'card card-pad' });
@@ -1139,7 +1189,8 @@ function buildRunDetail(host, run, token) {
       h('div', { class: 'run-stats', style: { marginTop: '12px' } },
         stat(c.postings, 'Postings scanned'), stat(c.internships, 'Internships'), stat(c.new, 'Added'),
         stat(c.updated, 'Updated'), stat(c.unchanged, 'Already tracked'), stat(c.skipped, 'Skipped'),
-        stat(c.closed, 'Closed'), stat(c.fetch_errors, 'Fetch errors')),
+        stat(c.closed, 'Closed'), stat(c.fetch_errors, 'Fetch errors'),
+        stat(c.scraper_login_required, 'Scraper login blocks'), stat(c.applier_login_required, 'Applier login blocks')),
       reasons.length ? h('div', { style: { marginTop: '16px' } },
         h('h3', { style: { marginBottom: '8px' } }, 'Why internships were skipped'),
         h('div', { class: 'hbars' }, reasons.map(([k, n]) => {
@@ -1225,14 +1276,34 @@ function buildRunDetail(host, run, token) {
     return wrap;
   };
 
+  const accessPanel = () => {
+    const scraper = events.filter((ev) => ev.kind === 'scraper_login_required');
+    const applier = events.filter((ev) => ev.kind === 'applier_login_required');
+    const issueCard = (title, description, items) => h('div', { class: 'card access-card' },
+      h('h3', null, title, h('span', { class: 'count' }, items.length)),
+      h('p', { class: 'small muted' }, description),
+      items.length ? h('ul', { class: 'access-list' }, items.map((ev) => h('li', null,
+        h('span', { class: 'small muted' }, fmtTime(ev.at)),
+        ev.job_id ? h('a', { href: `#/applications/${ev.job_id}` }, ev.message) : h('span', null, ev.message))))
+        : h('p', { class: 'small muted' }, 'None in this run.'));
+    return h('div', null,
+      h('div', { class: 'banner warn-banner' }, icon('lock', 'i'), h('div', null,
+        h('b', null, 'Login-required sites are listed separately.'),
+        ' The scraper cannot read a source that asks for sign-in, and the applier will pause instead of bypassing a login.')),
+      h('div', { class: 'access-grid' },
+        issueCard('Scraper could not read', 'Sources that required login while the bot was collecting listings.', scraper),
+        issueCard('Applier could not submit', 'Applications paused because the destination site requires your account login.', applier)));
+  };
+
   let current = run;
-  const tabs = [['log', 'Live log'], ['companies', 'Companies'], ['skipped', 'Skipped listings']];
+  const tabs = [['log', 'Live log'], ['companies', 'Companies'], ['access', 'Access issues'], ['skipped', 'Skipped listings']];
   const tabBar = h('div', { class: 'subtabs', role: 'tablist' });
   const showTab = async (key) => {
     store.set('activityTab', key);
     tabBar.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.key === key)));
     if (key === 'log') { fill(panel, logPanel()); renderLog(); logHost.scrollTop = logHost.scrollHeight; }
     else if (key === 'companies') fill(panel, companiesPanel(current));
+    else if (key === 'access') fill(panel, accessPanel());
     else fill(panel, await skippedPanel());
   };
   tabBar.append(...tabs.map(([k, l]) => h('button', { type: 'button', role: 'tab', 'data-key': k, onclick: () => showTab(k) }, l)));
@@ -1251,6 +1322,7 @@ function buildRunDetail(host, run, token) {
       appendEvents(data.events);
       const activeTab = tabBar.querySelector('[aria-selected="true"]')?.dataset.key;
       if (activeTab === 'companies') fill(panel, companiesPanel(current));
+      if (activeTab === 'access') fill(panel, accessPanel());
       if (current.status === 'running') setTimeout(load, 1000);
       else if (wasRunning) { pollStatus(); setTimeout(() => { if (!stale(token)) renderView(); }, 400); }
     } catch {
@@ -1400,6 +1472,7 @@ async function renderCompanies(root, token) {
 
 const SETTINGS_GROUPS = [
   ['about', 'About you', 'Used in drafted notes and prefilled answers.', ['name', 'preferred_name', 'contact', 'location']],
+  ['gemini', 'Gemini AI & Auto-Apply', 'Configure Google Gemini API key to answer application questions automatically. Halts on human verification or Google Docs and moves to User Review Pending.', ['gemini', 'auto_apply']],
   ['skills', 'Skills', 'Weight (1-3) is how much a match counts. Aliases are other spellings the bot should recognise, comma-separated.', ['skills']],
   ['projects', 'Projects', 'The bot links the project whose tags best match each posting. Add URLs so notes include the link.', ['projects']],
   ['filters', 'Filters', 'What gets kept or skipped. Phrase lists: one per line.', ['filters']],
@@ -1414,6 +1487,11 @@ const LIST_TEMPLATES = {
   boards: { name: '', url: '' },
 };
 const HINTS = {
+  api_key: 'Your Google Gemini API key. Used to answer application form questions.',
+  model: 'Gemini model to use (default: gemini-1.5-flash).',
+  enabled: 'Enable auto-applying during scheduled bot runs.',
+  max_per_run: 'Maximum applications to submit automatically per run (default: 5).',
+  dry_run: 'Simulate auto-applying without submitting real applications.',
   hours_min: 'Fewer hours than this is labelled "under target".',
   hours_max: 'More than this is labelled "slightly over".',
   min_score: 'Internships scoring below this (0-100) are skipped.',
@@ -1528,7 +1606,22 @@ async function renderSettings(root, token) {
             return h('div', { class: 'field wide' }, keys.length > 1 ? h('h3', { style: { margin: '6px 0 2px' } }, labelize(k)) : null,
               h('div', { class: 'fields' }, Object.entries(v).map(([kk, vv]) => field([k, kk], kk, vv))));
           }
-          return field([k], k, v);
+          const fld = field([k], k, v);
+          if (id === 'gemini' && k === 'gemini') {
+            return h('div', { class: 'field wide' }, fld,
+              h('div', { style: { marginTop: '8px' } },
+                h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+                  const key = draft.gemini?.api_key || '';
+                  const model = draft.gemini?.model || 'gemini-1.5-flash';
+                  try {
+                    toast('Testing Gemini API key...');
+                    const res = await api('POST', '/api/gemini/test', { api_key: key, model });
+                    if (res.ok) toast('✓ ' + res.message);
+                    else toast('✕ ' + res.message, true);
+                  } catch (err) { toast(err.message, true); }
+                } }, icon('ai', 'i'), 'Test Gemini API key')));
+          }
+          return fld;
         })))))));
   };
   const drawRaw = () => {

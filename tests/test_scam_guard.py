@@ -12,7 +12,7 @@ from bot.fetchers.base import Job
 from bot.pipeline import evaluate, machine_hash, rescore_user
 from bot.textutil import normalize_url
 
-PROFILE = config.load_profile()
+PROFILE = config.load_profile(config.ROOT / "profile.example.json")
 TEMPLATE = "\n".join([
     "Responsibilities of the intern:",
     "Answer customer calls professionally and resolve their questions with patience and care.",

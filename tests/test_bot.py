@@ -9,11 +9,11 @@ from pathlib import Path
 
 from bot import config, db, filters, flags, scoring
 from bot.config import Company
-from bot.fetchers.base import Job, is_internship
-from bot.pipeline import evaluate, machine_hash
+from bot.fetchers.base import FetchOutcome, Job, is_internship
+from bot.pipeline import Run, RunUser, evaluate, fetch_issue_message, machine_hash
 from bot.textutil import html_to_text, normalize_url
 
-PROFILE = config.load_profile()
+PROFILE = config.load_profile(config.ROOT / "profile.example.json")
 COMPANY = Company("Acme", "Test", "greenhouse", "acme", website="https://acme.com")
 
 
@@ -120,6 +120,77 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(evaluate(job(location="New York, NY"), COMPANY, PROFILE, no_domain).reason, "not_remote")
         self.assertEqual(evaluate(job(location="Remote - US"), COMPANY, PROFILE, no_domain).reason, "region_restricted")
         self.assertEqual(evaluate(job(title="Finance Intern", description="Excel"), COMPANY, PROFILE, no_domain).reason, "low_score")
+
+    def test_google_docs_requires_user_review(self):
+        ev = evaluate(job(description="Apply with this form: https://forms.gle/example"), COMPANY, PROFILE, no_domain)
+        self.assertTrue(ev.kept)
+        self.assertEqual(ev.initial_status, "User Review Pending")
+        self.assertTrue(any("Google Docs" in warning for warning in ev.record["warnings"]))
+
+
+class FetchActivity(unittest.TestCase):
+    def test_fetch_issue_message_distinguishes_login_from_other_errors(self):
+        login = FetchOutcome(COMPANY, http_status=401, error="HTTP 401")
+        blocked = FetchOutcome(COMPANY, http_status=403, error="HTTP 403")
+        self.assertIn("Login required", fetch_issue_message(login))
+        self.assertEqual(fetch_issue_message(blocked), "HTTP 403")
+
+    def test_scraper_login_error_survives_feed_fetcher(self):
+        from bot.fetchers.unstop import UnstopFetcher
+        from bot.http_client import FetchResult
+
+        class LoginHttp:
+            def get_json(self, url, params=None):
+                return FetchResult(401, None, "HTTP 401")
+
+        out = UnstopFetcher().fetch(Company("Unstop", "Feed", "unstop", "", options={"search_terms": ["react"]}),
+                                    LoginHttp(), {}, lambda _message: None)
+        self.assertFalse(out.ok)
+        self.assertIn("HTTP 401", out.error)
+        self.assertIn("Login required", fetch_issue_message(out))
+
+    def test_run_process_persists_login_message_in_activity_and_company_state(self):
+        conn = db.connect(":memory:")
+        try:
+            run_id = db.start_run(conn, "test", {})
+            run = Run(conn, PROFILE, [COMPANY], "test")
+            run.run_id = run_id
+            run._process(FetchOutcome(COMPANY, http_status=401, error="HTTP 401"))
+
+            events = db.run_events(conn, run_id)
+            self.assertEqual(events[-1]["kind"], "scraper_login_required")
+            self.assertIn("Login required", events[-1]["message"])
+            self.assertEqual(run.counts["scraper_login_required"], 1)
+            state = conn.execute("SELECT message FROM company_state WHERE name=?", (COMPANY.name,)).fetchone()
+            self.assertIn("Login required", state["message"])
+        finally:
+            conn.close()
+
+    def test_auto_apply_login_is_a_separate_activity_event(self):
+        conn = db.connect(":memory:")
+        try:
+            run_id = db.start_run(conn, "test", {})
+            run = Run(conn, PROFILE, [COMPANY], "test")
+            run.run_id = run_id
+            user = RunUser(db.LOCAL_USER_ID, db.LOCAL_USER_EMAIL, PROFILE)
+            run.users = [user]
+            run._record_auto_apply_result(user, {
+                "job_id": 42,
+                "company": "Internshala",
+                "role": "Frontend Intern",
+                "result": {
+                    "status": "user_review_pending",
+                    "error_code": "login_required",
+                    "message": "Login required for this application. Moved to User Review Pending.",
+                },
+            })
+
+            events = db.run_events(conn, run_id)
+            self.assertEqual(events[-1]["kind"], "applier_login_required")
+            self.assertIn("Applier could not apply", events[-1]["message"])
+            self.assertEqual(user.counts["applier_login_required"], 1)
+        finally:
+            conn.close()
 
 
 class Feeds(unittest.TestCase):

@@ -76,6 +76,20 @@ DEFAULTS = {
     "drafts": {"followup_days": 7, "start_date": "Immediately", "expected_stipend": ""},
     "red_flags": {"new_domain_days": 180},
     "llm_scoring": {"enabled": False},
+    "gemini": {
+        "api_key": "",
+        "model": "gemini-1.5-flash",
+    },
+    "auto_apply": {
+        "enabled": False,
+        "max_per_run": 5,
+        "dry_run": False,
+    },
+    "browser_apply": {
+        "cdp_url": "",
+        "user_data_dir": "",
+        "resume_path": "",
+    },
     "network": {
         "user_agent": "InternshipAssistant/1.0 (personal job-search tool; polite, rate-limited)",
         "min_delay_seconds": 1.0,

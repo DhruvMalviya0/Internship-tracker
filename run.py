@@ -83,6 +83,12 @@ def main(argv=None) -> int:
     ap.add_argument("--db", default=None, help=argparse.SUPPRESS)
     ap.add_argument("--trigger", default="cli", choices=("cli", "web", "schedule"), help=argparse.SUPPRESS)
     ap.add_argument("-v", "--verbose", action="store_true", help="show per-request progress")
+    ap.add_argument("--auto-apply", action="store_true",
+                    help="automatically submit to eligible boards that don't have human verification (using Gemini AI)")
+    ap.add_argument("--auto-apply-only", action="store_true",
+                    help="mass apply automatically to eligible tracked jobs without running a fresh scrape")
+    ap.add_argument("--max-auto-apply", type=int, default=None,
+                    help="maximum number of jobs to apply to (overrides profile setting, e.g. --max-auto-apply 10)")
     ap.add_argument("--rescore", action="store_true",
                     help="re-check already-tracked internships against current settings and red-flag rules (no fetching)")
     args = ap.parse_args(argv)
@@ -125,6 +131,21 @@ def main(argv=None) -> int:
                 res = rescore_user(conn, u.id, u.profile, whitelist, templates)
                 logging.info("Re-checked %s: %s", u.email, ", ".join(f"{k} {v}" for k, v in sorted(res.items())) or "nothing tracked")
             return 0
+        if args.auto_apply_only:
+            from bot import auto_apply
+            max_app = args.max_auto_apply or 10
+            for u in users:
+                logging.info("Running mass auto-apply for %s (target max: %d, dry_run=%s)...", u.email, max_app, args.dry_run)
+                results = auto_apply.auto_apply_batch(conn, u.id, u.profile, max_count=max_app, dry_run=args.dry_run)
+                applied = sum(1 for r in results if r.get("result", {}).get("status") in ("applied", "dry_run"))
+                pending = sum(1 for r in results if r.get("result", {}).get("status") == "user_review_pending")
+                logging.info("Auto-apply finished: %d submitted/dry-run eligible, %d moved to User Review Pending.", applied, pending)
+                for r in results:
+                    res = r.get("result", {})
+                    st = res.get("status", "unknown").upper()
+                    msg = res.get("message", "")
+                    logging.info("  [%s] %s - %s: %s", st, r["company"], r["role"], msg)
+            return 0
         sources = whitelist + config.feed_sources(fetch_profile)
         if args.company:
             wanted = {c.lower() for c in args.company}
@@ -139,7 +160,8 @@ def main(argv=None) -> int:
             sources = [c for c in sources if c.ats == args.source]
 
         run = Run(conn, fetch_profile, sources, args.trigger,
-                  {"company": args.company, "source": args.source, "dry_run": args.dry_run},
+                  {"company": args.company, "source": args.source, "dry_run": args.dry_run,
+                   "auto_apply": args.auto_apply, "max_auto_apply": args.max_auto_apply},
                   whitelist=whitelist, users=users, notes=notes)
         result = run.execute()
     except db.RunInProgress as exc:

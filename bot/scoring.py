@@ -125,5 +125,15 @@ def score(job: Job, profile: dict) -> tuple[int, list[str], list[str], dict]:
 
 
 def llm_rescore(job: Job, profile: dict) -> int | None:
-    """Hook for optional LLM scoring later (profile.llm_scoring.enabled). Not implemented yet."""
-    return None
+    """Optional LLM scoring using Gemini when profile.llm_scoring.enabled is True."""
+    from . import gemini
+    if not gemini.is_configured(profile):
+        return None
+    try:
+        j_dict = job.to_dict() if hasattr(job, "to_dict") else {
+            "company": job.company, "role": job.title, "description": job.description, "location": job.location,
+        }
+        return gemini.score_fit(j_dict, profile)
+    except Exception as exc:
+        log.warning("Gemini rescoring failed: %s", exc)
+        return None

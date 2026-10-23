@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import time
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from . import db, filters, flags, notes, programs, scoring
+from . import db, filters, flags, notes, programs, scoring, verification
 from .config import Company
 from .fetchers import FETCHERS, FetchOutcome, Job, is_entry_level
 from .http_client import HttpClient, RobotsDisallowed
@@ -20,6 +21,33 @@ from .textutil import normalize_url, sha1
 
 log = logging.getLogger(__name__)
 _LOG_LEVELS = {"debug": logging.DEBUG, "warn": logging.WARNING, "error": logging.ERROR}
+_LOGIN_FETCH_RE = re.compile(
+    r"\b(?:HTTP\s*401|login required|requires? (?:an? )?account login|sign[ -]?in required)\b", re.I
+)
+
+
+def fetch_issue_message(out: FetchOutcome) -> str:
+    """Return a user-facing fetch issue, calling out sources that require login."""
+    raw_parts = []
+    for part in (out.error, out.warning):
+        part = (part or "").strip()
+        if part and part not in raw_parts:
+            raw_parts.append(part)
+    raw = " ".join(raw_parts)
+    if not raw and out.http_status == 401:
+        return "Login required to access this source. HTTP 401"
+    if not raw:
+        return ""
+    if out.http_status == 401 or _LOGIN_FETCH_RE.search(raw):
+        return raw if raw.lower().startswith("login required to access this source.") else \
+            f"Login required to access this source. {raw}"
+    return raw
+
+
+def fetch_issue_kind(out: FetchOutcome, message: str = "") -> str:
+    """Return the activity kind for a source-fetch issue."""
+    message = message or fetch_issue_message(out)
+    return "scraper_login_required" if out.http_status == 401 or _LOGIN_FETCH_RE.search(message) else "fetch_error"
 
 
 @dataclass
@@ -105,6 +133,10 @@ def evaluate(job: Job, company: Company, profile: dict, domain_age, force: bool 
     if job.via and job.source != "manual" and not filters.is_internship(job.title, job.employment_type):
         warnings.append("Junior / entry-level role, not an internship")
 
+    g_check = verification.check_google_docs(job.description, job.apply_url or job.url)
+    if g_check.detected:
+        warnings.append(f"Google Docs / external form required: {g_check.reason}")
+
     project = notes.pick_project(profile, job, matched)
     record = {
         "url": job.url, "apply_url": job.apply_url or job.url, "source": job.source, "platform": job.via,
@@ -116,10 +148,11 @@ def evaluate(job: Job, company: Company, profile: dict, domain_age, force: bool 
         "warnings": warnings, "night_shift": 1 if night else 0, "description": job.description[:40000],
         "posted_at": job.posted_at,
     }
+    initial_status = "Skipped (red flag)" if red else ("User Review Pending" if g_check.detected else "To Review")
     return Evaluation(
         kept=True,
         record=record,
-        initial_status="Skipped (red flag)" if red else "To Review",
+        initial_status=initial_status,
         note=notes.build_note(profile, job, matched, project, night or profile["filters"].get("night_shift_ok", False)),
         answers=notes.build_answers(profile, job, project, reg.label),
     )
@@ -266,7 +299,18 @@ class Run:
                         self.event("warn", "program", f"{p['name']}: couldn't check ({p['error']})")
                     else:
                         nxt = f" Next: {p['next_label']} on {p['next_date']}." if p.get("next_date") else ""
-                        self.event("info", "program", f"{p['name']}: {p['status']}.{nxt}")
+            # Auto-apply step for users who have it enabled
+            from . import auto_apply
+            for u in self.active_users:
+                auto_cfg = u.profile.get("auto_apply", {})
+                should_auto = bool(self.run_args.get("auto_apply") or auto_cfg.get("enabled", False))
+                if should_auto:
+                    max_app = self.run_args.get("max_auto_apply") or int(auto_cfg.get("max_per_run", 5))
+                    dry = bool(auto_cfg.get("dry_run", False) or self.run_args.get("dry_run", False))
+                    self.event("info", "auto_apply", f"Checking auto-apply eligibility (max {max_app})...", user=u)
+                    results = auto_apply.auto_apply_batch(self.conn, u.id, u.profile, max_count=max_app, dry_run=dry)
+                    for r in results:
+                        self._record_auto_apply_result(u, r)
 
             secs = time.monotonic() - started
             status = "partial" if self.counts["fetch_errors"] else "ok"
@@ -287,6 +331,21 @@ class Run:
                           error=msg, counts=self._counts_payload())
             self.conn.commit()
             raise
+
+    def _record_auto_apply_result(self, user: RunUser, result: dict) -> None:
+        """Turn one auto-apply result into a user-visible activity event and count."""
+        res = result.get("result", {})
+        company, role, job_id = result.get("company", "the company"), result.get("role", "this role"), result.get("job_id")
+        message = res.get("message") or "No application result was returned."
+        if res.get("status") == "applied":
+            self.event("success", "applied", f"Applied automatically to {company}: “{role}”", company, job_id, user=user)
+        elif res.get("error_code") == "login_required":
+            user.counts["applier_login_required"] += 1
+            self.event("error", "applier_login_required", f"Applier could not apply to {company}: {message}",
+                       company, job_id, user=user)
+        elif res.get("status") == "user_review_pending":
+            self.event("warn", "review_pending", f"User Review Pending for {company}: {message}",
+                       company, job_id, user=user)
 
     def _feed_cooldown(self, c: Company) -> str:
         """Non-empty (the reason) when a feed was fetched too recently to ask again, per its terms."""
@@ -333,12 +392,18 @@ class Run:
 
     def _process(self, out: FetchOutcome) -> None:
         c = out.company
+        issue = fetch_issue_message(out)
+        issue_kind = fetch_issue_kind(out, issue)
         result = {"company": c.name, "ats": c.ats, "ok": out.ok, "postings": out.postings,
                   "internships": len(out.jobs), "kept": 0, "seconds": round(out.seconds, 1),
-                  "message": out.error or out.warning}
+                  "message": issue}
         if not out.ok:
             self.counts["fetch_errors"] += 1
-            self.event("error", "fetch_error", f"{c.name}: {out.error}", c.name)
+            if issue_kind == "scraper_login_required":
+                self.counts["scraper_login_required"] += 1
+                self.event("error", issue_kind, f"Scraper could not read {c.name}: {issue}", c.name)
+            else:
+                self.event("error", issue_kind, f"{c.name}: {issue}", c.name)
             self._save_company_state(out, result)
             return
 
@@ -347,9 +412,13 @@ class Run:
         self.counts["not_internship"] += out.postings - len(out.jobs)
         extra = f", {out.details_fetched} detail pages read, {out.details_cached} reused from cache" \
             if out.details_fetched or out.details_cached else ""
-        self.event("warn" if out.warning else "info", "fetched",
-                   f"{c.name}: {out.postings} postings, {len(out.jobs)} internship(s){extra}"
-                   + (f". {out.warning}" if out.warning else ""), c.name)
+        if issue_kind == "scraper_login_required":
+            self.counts["scraper_login_required"] += 1
+            self.event("error", issue_kind, f"Scraper could not fully read {c.name}: {issue}", c.name)
+        else:
+            self.event("warn" if out.warning else "info", "fetched",
+                       f"{c.name}: {out.postings} postings, {len(out.jobs)} internship(s){extra}"
+                       + (f". {issue}" if issue else ""), c.name)
 
         open_keys: set[str] = set()
         kept_any: set[str] = set()
@@ -433,6 +502,46 @@ class Run:
              out.postings, result["internships"], result["kept"], result["seconds"], result["message"]),
         )
         self.conn.commit()
+
+
+def run_auto_apply_batch(
+    conn: Conn,
+    user_id: int,
+    profile: dict,
+    max_count: int = 5,
+    dry_run: bool = False,
+    gemini_key: str | None = None,
+    trigger: str = "auto_apply",
+) -> tuple[int, list[dict]]:
+    """Run a direct batch auto-apply and persist its results in Bot activity."""
+    from . import auto_apply
+
+    run_id = db.start_run(conn, trigger, {"auto_apply": True, "max_auto_apply": max_count, "dry_run": dry_run})
+    account = db.get_user(conn, user_id)
+    if not account:
+        raise KeyError(user_id)
+    user = RunUser(user_id, account["email"], profile)
+    run = Run(conn, profile, [], trigger, {"auto_apply": True, "max_auto_apply": max_count, "dry_run": dry_run},
+              users=[user])
+    run.run_id = run_id
+    try:
+        run.event("info", "auto_apply", f"Starting auto-apply (max {max_count})...", user=user)
+        results = auto_apply.auto_apply_batch(conn, user_id, profile, max_count=max_count, dry_run=dry_run,
+                                              gemini_key=gemini_key)
+        for result in results:
+            run._record_auto_apply_result(user, result)
+        db.save_user_counts(conn, run_id, user_id, run._user_payload(user))
+        db.update_run(conn, run_id, status="ok", finished_at=db.now_iso(), phase="done", counts=run._counts_payload())
+        conn.commit()
+        return run_id, results
+    except BaseException as exc:
+        conn.rollback()
+        msg = f"{type(exc).__name__}: {exc}"
+        run.event("error", "crash", msg, user=user)
+        db.update_run(conn, run_id, status="error", finished_at=db.now_iso(), phase="failed",
+                      error=msg, counts=run._counts_payload())
+        conn.commit()
+        raise
 
 
 def workspace_profile_complete(profile: dict) -> bool:

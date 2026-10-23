@@ -4,7 +4,10 @@ A semi-automated internship finder for LEaf (Dhruv Malviya). Every day it reads 
 companies you trust, keeps the internships that are **remote, open to someone in India, and a fit for your
 stack**, drafts a tailored note and prefilled answers for each, and tracks everything on a local website.
 
-**It never submits anything.** You open the application form, paste the drafts, and press submit yourself.
+**Supports both semi-automated and intelligent auto-apply modes:**
+- **Auto-apply with Gemini AI**: The bot can submit automatically to companies without login requirements or human verification, answering form questions with Gemini AI. If a site requires account login, a separate Google Doc / Form, or human verification (CAPTCHA / Cloudflare Turnstile), it safely halts and marks the application as **User Review Pending**.
+- **Browser apply for login-gated sites**: A separate CLI can attach to a Chromium browser session that you have already signed into (for example Internshala), fill known application fields, and submit only after the site visibly confirms success. It never logs in for you, solves a CAPTCHA, or marks a job Applied when confirmation is missing.
+- **Manual apply**: You open the application form, paste the drafts or Gemini-generated answers, and submit yourself.
 
 **Two ways to run it** (same code):
 
@@ -30,7 +33,7 @@ Needs Python 3.10+ (tested on 3.13).
 ```powershell
 cd "D:\work\Internship bot"
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt   # requests, flask, authlib, psycopg, waitress
+.venv\Scripts\python -m pip install -r requirements.txt   # requests, flask, authlib, psycopg, waitress, playwright
 ```
 
 Then fill in the blanks in **Settings** on the website (or `profile.json`): email, portfolio/GitHub/LinkedIn
@@ -50,9 +53,34 @@ links, project URLs, expected stipend. Blank fields show up as `[fill in]` / `[a
 | Add one you found yourself | **+ Add internship**: paste a link (Internshala, Unstop, HN, a company page…) or fill the form |
 | See every platform | **Platforms** page: what's automatic, what to browse yourself, and how many you've tracked from each |
 
+### Browser apply for login-required sites
+
+For jobs held with a warning such as `Login required to apply: Internshala requires candidate account login and
+session verification`, use the separate browser CLI after starting a Chromium-based browser with remote debugging
+and signing in there:
+
+```powershell
+# Install the optional browser engine once
+.venv\Scripts\python -m playwright install chromium
+
+# List login-held jobs without opening a browser
+python browser_apply.py --list
+
+# Fill the form but do not submit (safe preview)
+python browser_apply.py --pending --limit 1 --cdp-url http://127.0.0.1:9222
+
+# Submit after reviewing the preview
+python browser_apply.py --pending --limit 1 --cdp-url http://127.0.0.1:9222 --submit
+```
+
+Pass `--resume C:\path\to\resume.pdf` when the form has a resume upload. The CLI also supports
+`--job-id 123` for one exact tracker row and `--user-data-dir C:\path\to\browser-profile` when it should launch
+its own persistent Chrome profile instead of attaching over CDP. Unknown required fields, login pages, CAPTCHAs,
+external forms, and unconfirmed submissions remain **User Review Pending**.
+
 `run.py` options: `--company Figma` (repeatable; also `--company Remotive`), `--source lever` (any ATS, or
-`remotive` / `weworkremotely`), `--dry-run` (works on a throwaway copy of the database), `-v` (show every
-request).
+`remotive` / `weworkremotely`), `--auto-apply` (automatically submit to eligible boards without human verification using Gemini),
+`--dry-run` (works on a throwaway copy of the database), `-v` (show every request).
 
 ### The workflow for one internship
 
@@ -79,8 +107,9 @@ request).
   applications against your 10–15 goal, applications per week for 12 weeks, counts by status, and the skills
   postings ask for that you don't list.
 - **Bot activity**: each run with live progress, counts, skip reasons, per-company results and a full event
-  log. **Skipped listings** shows every internship a filter rejected and the exact text that triggered it;
-  **Track anyway** pulls one into your tracker if the filter was wrong.
+  log. The **Access issues** section separates scraper login failures from applications the applier paused
+  because the destination site requires login. **Skipped listings** shows every internship a filter rejected and
+  the exact text that triggered it; **Track anyway** pulls one into your tracker if the filter was wrong.
 - **Companies**: the job feeds' status, then your whitelist (`companies.csv`), editable, with a **Test**
   button to check a board token and the last fetch result per company. Set *AI screening = Yes* to flag every
   role from that company (including its roles found via feeds).
@@ -201,6 +230,7 @@ bot/
   flags.py              AI screening, red flags, night shift, RDAP domain age
   notes.py              tailored note + prefilled answers
   pipeline.py           one run: parallel fetch, evaluate, store, log events
+  browser_apply.py      optional logged-in-browser applier for login-gated application sites
   db.py                 schema and queries: accounts, each user's jobs, shared bot state
   store.py              one connection type for SQLite (local) and Postgres (DATABASE_URL)
   workspace.py          where settings live per mode: per-user profiles, admin-managed shared sources
@@ -210,6 +240,7 @@ web/app.py              Flask app: JSON API + static files, scoped to the signed
 web/auth.py             Google sign-in + email links (cloud mode)
 web/wsgi.py             gunicorn entry point for Render
 web/static/             index.html, login.html, app.css, app.js, login.js (no frameworks, no CDN)
+browser_apply.py        separate CLI for the logged-in browser applier
 scripts/migrate_to_cloud.py   copies your local tracker into your online account
 scripts/                schedule_windows.ps1, cron.example
 tests/                  python -m unittest discover tests   (test_postgres.py needs TEST_DATABASE_URL)

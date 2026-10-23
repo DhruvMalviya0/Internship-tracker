@@ -23,7 +23,7 @@ from flask import Flask, Response, abort, g, jsonify, redirect, request, send_fr
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from bot import config, db, importer, mailer, pipeline, programs, store, workspace
+from bot import auto_apply, config, db, gemini, importer, mailer, pipeline, programs, store, workspace
 from bot.fetchers import FETCHERS
 from bot.filters import REASON_LABELS
 from bot.http_client import HttpClient, RobotsDisallowed
@@ -283,6 +283,39 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
         except LookupError as exc:
             raise ApiError(409, str(exc))
 
+    @app.post("/api/jobs/<int:job_id>/auto-apply")
+    def job_auto_apply(job_id: int):
+        conn, uid = get_conn(), me()["id"]
+        p = profile()
+        data = request.get_json(silent=True) or {}
+        dry_run = bool(data.get("dry_run", False))
+        gemini_key = data.get("gemini_key") or None
+        result = auto_apply.apply_to_job(conn, uid, job_id, p, dry_run=dry_run, gemini_key=gemini_key)
+        return jsonify(result)
+
+    @app.post("/api/auto-apply/batch")
+    def auto_apply_batch_endpoint():
+        conn, uid = get_conn(), me()["id"]
+        p = profile()
+        data = request.get_json(silent=True) or {}
+        max_count = int(data.get("max_count") or p.get("auto_apply", {}).get("max_per_run", 5))
+        dry_run = bool(data.get("dry_run", False))
+        gemini_key = data.get("gemini_key") or None
+        try:
+            run_id, results = pipeline.run_auto_apply_batch(conn, uid, p, max_count=max_count, dry_run=dry_run,
+                                                            gemini_key=gemini_key)
+        except db.RunInProgress as exc:
+            raise ApiError(409, f"A bot activity run is already in progress (run #{exc.run_id}).")
+        return jsonify({"run_id": run_id, "results": results})
+
+    @app.post("/api/gemini/test")
+    def test_gemini_key():
+        data = request.get_json(silent=True) or {}
+        key = data["api_key"] if "api_key" in data else gemini.get_api_key(profile())
+        model = data.get("model") or gemini.get_model(profile())
+        ok, msg = gemini.test_key(key, model=model)
+        return jsonify({"ok": ok, "message": msg, "model": model})
+
     @app.post("/api/jobs/<int:job_id>/block")
     def block_company(job_id: int):
         """'Not a real employer': blocks the job's company for this user and skips their listings from it."""
@@ -497,8 +530,9 @@ def create_app(db_target: str | None = None, demo: bool = False) -> Flask:
         except RobotsDisallowed as exc:
             return jsonify({"ok": False, "message": str(exc)})
         if not out.ok:
-            return jsonify({"ok": False, "message": out.error})
-        return jsonify({"ok": True, "postings": out.postings, "internships": len(out.jobs), "message": out.warning})
+            return jsonify({"ok": False, "message": pipeline.fetch_issue_message(out)})
+        return jsonify({"ok": True, "postings": out.postings, "internships": len(out.jobs),
+                        "message": pipeline.fetch_issue_message(out)})
 
     @app.get("/api/platforms")
     def platforms():

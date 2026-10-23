@@ -31,6 +31,7 @@
 
   /* Status colors (identity, always paired with the status label). */
   --st-review: #d29f00;
+  --st-pending: #d97706;
   --st-ready: #2f6fdb;
   --st-applied: #1f9d4c;
   --st-followup: #ea7a1c;
@@ -68,6 +69,7 @@
     --critical-ink: #e66767;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
     --st-review: #e3b31b;
+    --st-pending: #fbbf24;
     --st-ready: #5b8ff0;
     --st-applied: #2fb862;
     --st-followup: #f08a35;
@@ -204,6 +206,7 @@ code { font: 12.5px var(--mono); padding: 1px 5px; border-radius: 4px; backgroun
 
 /* ------------------------------------------------------------------ status colors */
 [data-status="To Review"] { --st: var(--st-review); }
+[data-status="User Review Pending"] { --st: var(--st-pending); }
 [data-status="Ready to Apply"] { --st: var(--st-ready); }
 [data-status="Applied"] { --st: var(--st-applied); }
 [data-status="Follow-up Due"] { --st: var(--st-followup); }
@@ -426,6 +429,15 @@ details > summary { cursor: pointer; color: var(--ink-2); font-weight: 550; }
 .log-row.error .i, .log-row.error .m { color: var(--critical-ink); }
 .log-row.debug .m { color: var(--muted); }
 .log-row .m a { color: inherit; text-decoration: underline; text-decoration-color: var(--border-strong); }
+.access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.access-card { padding: 14px; }
+.access-card h3 { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 4px; }
+.access-card h3 .count { color: var(--critical-ink); font-variant-numeric: tabular-nums; }
+.access-card p { margin: 0 0 10px; }
+.access-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.access-list li { display: grid; grid-template-columns: 58px 1fr; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.access-list li:first-child { border-top: 0; padding-top: 0; }
+.access-list a { color: var(--critical-ink); text-decoration: underline; text-decoration-color: var(--border-strong); }
 .mini-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mini-table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .mini-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -496,6 +508,7 @@ details > summary { cursor: pointer; color: var(--ink-2); font-weight: 550; }
   .kv { grid-template-columns: 110px 1fr; }
   .hbar { grid-template-columns: 130px 1fr; }
   .toolbar .search { max-width: none; }
+  .access-grid { grid-template-columns: 1fr; }
 
   /* Tracker table becomes cards. */
   table.tracker { min-width: 0; }
@@ -541,3 +554,27 @@ table.tracker td.c-role { min-width: 220px; }
 .user-pop .who b { display: block; }
 .role-tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 5px; background: color-mix(in srgb, var(--accent) 14%, var(--surface)); color: var(--accent); }
 .danger-zone { border-color: color-mix(in srgb, var(--critical) 35%, transparent); }
+
+
+.btn.auto-apply {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 560;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  transition: all 0.15s ease;
+}
+.btn.auto-apply:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  transform: translateY(-1px);
+}
+.btn.auto-apply.loading {
+  opacity: 0.75;
+  pointer-events: none;
+}
+.notice.pending-notice {
+  background: color-mix(in srgb, var(--st-pending) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--st-pending) 30%, transparent);
+  color: var(--ink);
+}
